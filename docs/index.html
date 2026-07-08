@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GCV — Pure Go Speaker Identification</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+
+  :root {
+    --bg:       #0a0a0a;
+    --surface:  #111111;
+    --border:   #1e1e1e;
+    --text:     #e0e0e0;
+    --text-dim: #666666;
+    --text-muted: #444444;
+    --accent:   #e0e0e0;
+    --accent-warm: #c8a96e;
+    --code-bg:  #0d0d0d;
+    --mono:     'JetBrains Mono', monospace;
+    --sans:     'IBM Plex Sans', system-ui, sans-serif;
+    --sidebar-w: 260px;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    font-size: 15px;
+    line-height: 1.7;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── LAYOUT ── */
+  .layout {
+    display: flex;
+    min-height: 100vh;
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    width: var(--sidebar-w);
+    border-right: 1px solid var(--border);
+    padding: 32px 0;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    overflow-y: auto;
+    background: var(--bg);
+    z-index: 10;
+  }
+
+  .sidebar-logo {
+    padding: 0 24px 28px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+  }
+
+  .sidebar-logo img {
+    width: 36px;
+    height: 36px;
+  }
+
+  .sidebar-logo h1 {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 2px;
+    color: var(--text);
+    margin-top: 10px;
+  }
+
+  .sidebar-logo .version {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .nav-group {
+    padding: 0 16px;
+    margin-bottom: 8px;
+  }
+
+  .nav-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 8px;
+  }
+
+  .nav-link {
+    display: block;
+    padding: 6px 8px;
+    font-size: 13px;
+    color: var(--text-dim);
+    text-decoration: none;
+    border-radius: 4px;
+    transition: all 0.15s;
+    font-weight: 400;
+  }
+
+  .nav-link:hover {
+    color: var(--text);
+    background: var(--surface);
+  }
+
+  .nav-link.active {
+    color: var(--text);
+    background: var(--surface);
+  }
+
+  /* ── MAIN ── */
+  .main {
+    margin-left: var(--sidebar-w);
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* ── HERO ── */
+  .hero {
+    padding: 80px 64px 60px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .hero-tag {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+  }
+
+  .hero h2 {
+    font-family: var(--mono);
+    font-size: 42px;
+    font-weight: 700;
+    line-height: 1.15;
+    color: var(--text);
+    max-width: 680px;
+    letter-spacing: -1px;
+  }
+
+  .hero p {
+    margin-top: 16px;
+    font-size: 17px;
+    color: var(--text-dim);
+    max-width: 540px;
+    line-height: 1.6;
+  }
+
+  .hero-install {
+    margin-top: 28px;
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--accent-warm);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    display: inline-block;
+    padding: 10px 18px;
+    letter-spacing: 0.5px;
+  }
+
+  .hero-install span {
+    color: var(--text-muted);
+    user-select: none;
+  }
+
+  /* ── SECTION ── */
+  .section {
+    padding: 48px 64px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .section:last-child {
+    border-bottom: none;
+  }
+
+  .section-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+  }
+
+  .section h3 {
+    font-family: var(--mono);
+    font-size: 22px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 16px;
+    letter-spacing: -0.3px;
+  }
+
+  .section p {
+    color: var(--text-dim);
+    max-width: 640px;
+    margin-bottom: 16px;
+  }
+
+  /* ── CODE BLOCKS ── */
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    padding: 20px 24px;
+    overflow-x: auto;
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--text);
+    margin: 16px 0;
+    max-width: 720px;
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: 13px;
+  }
+
+  :not(pre) > code {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    font-size: 12px;
+    color: var(--accent-warm);
+  }
+
+  .kw  { color: #c8a96e; }
+  .fn  { color: #e0e0e0; }
+  .str { color: #7a9e7e; }
+  .cm  { color: #444444; font-style: italic; }
+  .num { color: #b08d6e; }
+  .typ { color: #8a8a8a; }
+
+  /* ── TABLE ── */
+  table {
+    width: 100%;
+    max-width: 720px;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 14px;
+  }
+
+  th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    padding: 10px 16px 10px 0;
+    border-bottom: 1px solid var(--border);
+    font-weight: 500;
+  }
+
+  td {
+    padding: 10px 16px 10px 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-dim);
+    vertical-align: top;
+  }
+
+  td:first-child {
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    white-space: nowrap;
+  }
+
+  tr:last-child td {
+    border-bottom: none;
+  }
+
+  /* ── API CARDS ── */
+  .api-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    margin: 16px 0;
+    max-width: 720px;
+  }
+
+  .api-card {
+    background: var(--bg);
+    padding: 20px 24px;
+  }
+
+  .api-card code {
+    font-size: 14px;
+    color: var(--text);
+    display: block;
+    margin-bottom: 6px;
+  }
+
+  .api-card .api-desc {
+    font-size: 13px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  /* ── PIPELINE DIAGRAM ── */
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 24px 0;
+    max-width: 520px;
+  }
+
+  .pipe-step {
+    display: flex;
+    align-items: stretch;
+  }
+
+  .pipe-line {
+    width: 1px;
+    background: var(--border);
+    position: relative;
+    flex-shrink: 0;
+  }
+
+  .pipe-line::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -3px;
+    width: 7px;
+    height: 7px;
+    background: var(--text-dim);
+    border-radius: 50%;
+  }
+
+  .pipe-content {
+    padding: 0 0 28px 20px;
+  }
+
+  .pipe-label {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+  }
+
+  .pipe-detail {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+
+  .pipe-code {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  /* ── SCORING BAR ── */
+  .score-bar {
+    margin: 8px 0;
+    max-width: 400px;
+  }
+
+  .score-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 6px;
+  }
+
+  .score-label {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    width: 36px;
+    text-align: right;
+  }
+
+  .score-track {
+    flex: 1;
+    height: 3px;
+    background: var(--border);
+  }
+
+  .score-fill {
+    height: 100%;
+    background: var(--text-dim);
+  }
+
+  .score-text {
+    font-size: 12px;
+    color: var(--text-muted);
+    width: 180px;
+  }
+
+  /* ── CALLOUT ── */
+  .callout {
+    border-left: 2px solid var(--border);
+    padding: 16px 20px;
+    margin: 16px 0;
+    max-width: 640px;
+  }
+
+  .callout p {
+    font-size: 14px;
+    color: var(--text-dim);
+    margin: 0;
+  }
+
+  .callout strong {
+    color: var(--text);
+  }
+
+  /* ── RESPONSIVE ── */
+  .menu-toggle {
+    display: none;
+    position: fixed;
+    top: 16px;
+    left: 16px;
+    z-index: 20;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 18px;
+    width: 40px;
+    height: 40px;
+    cursor: pointer;
+    line-height: 1;
+  }
+
+  @media (max-width: 800px) {
+    .sidebar {
+      transform: translateX(-100%);
+      transition: transform 0.2s;
+    }
+    .sidebar.open {
+      transform: translateX(0);
+    }
+    .main {
+      margin-left: 0;
+    }
+    .menu-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .hero { padding: 80px 24px 40px; }
+    .section { padding: 32px 24px; }
+    .api-grid { grid-template-columns: 1fr; }
+  }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); }
+</style>
+</head>
+<body>
+
+<button class="menu-toggle" onclick="document.querySelector('.sidebar').classList.toggle('open')">&#9776;</button>
+
+<div class="layout">
+
+<!-- ── SIDEBAR ── -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <img src="../logo.svg" alt="GCV">
+    <h1>GCV</h1>
+    <div class="version">v0.1.0</div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-label">Start</div>
+    <a href="#install" class="nav-link">Installation</a>
+    <a href="#quickstart" class="nav-link">Quick Start</a>
+    <a href="#examples" class="nav-link">Examples</a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-label">API</div>
+    <a href="#engine" class="nav-link">Engine</a>
+    <a href="#enroll" class="nav-link">Enroll</a>
+    <a href="#identify" class="nav-link">Identify</a>
+    <a href="#detect" class="nav-link">Detect</a>
+    <a href="#persistence" class="nav-link">Persistence</a>
+    <a href="#config" class="nav-link">Configuration</a>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-label">Reference</div>
+    <a href="#pipeline" class="nav-link">How It Works</a>
+    <a href="#scoring" class="nav-link">Scoring</a>
+    <a href="#audio" class="nav-link">Audio Requirements</a>
+    <a href="#methods" class="nav-link">Training Methods</a>
+    <a href="#features" class="nav-link">Feature Extraction</a>
+    <a href="#streaming" class="nav-link">Streaming</a>
+    <a href="#comparison" class="nav-link">vs Python</a>
+    <a href="#cli" class="nav-link">CLI</a>
+  </div>
+</nav>
+
+<!-- ── MAIN CONTENT ── -->
+<main class="main">
+
+  <!-- HERO -->
+  <div class="hero" id="top">
+    <div class="hero-tag">Documentation</div>
+    <h2>Pure Go speaker identification</h2>
+    <p>Feed it audio files. It tells you who's talking. No Python, no CGo, no ML frameworks.</p>
+    <div class="hero-install"><span>$</span> go get github.com/Aswanidev-vs/go-cognitive-voice</div>
+  </div>
+
+  <!-- INSTALL -->
+  <div class="section" id="install">
+    <div class="section-title">01</div>
+    <h3>Installation</h3>
+<pre><code><span class="kw">go</span> get github.com/Aswanidev-vs/go-cognitive-voice</code></pre>
+    <p>Two dependencies, both pure Go:</p>
+    <table>
+      <tr><td>gopxl/beep</td><td>Audio decoding (WAV + MP3)</td></tr>
+      <tr><td>gonum</td><td>FFT, matrix math</td></tr>
+    </table>
+  </div>
+
+  <!-- QUICK START -->
+  <div class="section" id="quickstart">
+    <div class="section-title">02</div>
+    <h3>Quick Start</h3>
+<pre><code><span class="kw">package</span> main
+
+<span class="kw">import</span> (
+    <span class="str">"fmt"</span>
+    <span class="str">"github.com/Aswanidev-vs/go-cognitive-voice/pkg/gcv"</span>
+)
+
+<span class="kw">func</span> <span class="fn">main</span>() {
+    engine := gcv.<span class="fn">NewEngine</span>(gcv.<span class="fn">DefaultConfig</span>())
+
+    <span class="cm">// Register speakers</span>
+    engine.<span class="fn">EnrollSpeaker</span>(<span class="str">"alice"</span>, <span class="str">"Alice"</span>, []<span class="kw">string</span>{
+        <span class="str">"alice_01.wav"</span>,
+        <span class="str">"alice_02.wav"</span>,
+    })
+
+    <span class="cm">// Identify who's talking</span>
+    result, _ := engine.<span class="fn">Identify</span>(<span class="str">"mystery.wav"</span>)
+    <span class="kw">if</span> result.Identified {
+        fmt.<span class="fn">Printf</span>(<span class="str">"%s is talking (%.0f%%)\n"</span>,
+            result.SpeakerName, result.Score*<span class="num">100</span>)
+    }
+}</code></pre>
+    <p>10 lines. Done.</p>
+  </div>
+
+  <!-- EXAMPLES -->
+  <div class="section" id="examples">
+    <div class="section-title">03</div>
+    <h3>Examples</h3>
+    <div class="api-grid">
+      <div class="api-card">
+        <code>examples/basic/</code>
+        <div class="api-desc">Minimal starter. Enroll, identify, done.</div>
+      </div>
+      <div class="api-card">
+        <code>examples/advanced/</code>
+        <div class="api-desc">Persistence, threshold tuning, verification.</div>
+      </div>
+      <div class="api-card">
+        <code>examples/mfcc/</code>
+        <div class="api-desc">Feature extraction without the engine.</div>
+      </div>
+      <div class="api-card">
+        <code>cmd/gcv/</code>
+        <div class="api-desc">Full CLI tool. Enroll, identify, detect, list.</div>
+      </div>
+    </div>
+<pre><code><span class="kw">go</span> run examples/basic/main.go</code></pre>
+  </div>
+
+  <!-- ENGINE -->
+  <div class="section" id="engine">
+    <div class="section-title">04</div>
+    <h3>Engine</h3>
+    <p>The engine is the core object. Create one, enroll speakers, then identify or detect.</p>
+<pre><code>engine := gcv.<span class="fn">NewEngine</span>(gcv.<span class="fn">DefaultConfig</span>())</code></pre>
+    <p>Defaults work for most cases. See <a href="#config" style="color:var(--accent-warm);text-decoration:none;border-bottom:1px solid var(--accent-warm)">Configuration</a> to tune.</p>
+  </div>
+
+  <!-- ENROLL -->
+  <div class="section" id="enroll">
+    <div class="section-title">05</div>
+    <h3>Enroll</h3>
+    <p>Register a speaker from one or more audio files. More files = better accuracy.</p>
+<pre><code>err := engine.<span class="fn">EnrollSpeaker</span>(
+    <span class="str">"alice"</span>,    <span class="cm">// unique ID</span>
+    <span class="str">"Alice"</span>,    <span class="cm">// display name</span>
+    []<span class="kw">string</span>{<span class="str">"alice_01.wav"</span>, <span class="str">"alice_02.wav"</span>},
+)</code></pre>
+    <div class="callout">
+      <p><strong>Re-enrolling</strong> the same ID replaces the old model. It does not merge.</p>
+    </div>
+    <p>Formats: WAV (PCM 8/16/24/32-bit, float32/64), MP3.</p>
+  </div>
+
+  <!-- IDENTIFY -->
+  <div class="section" id="identify">
+    <div class="section-title">06</div>
+    <h3>Identify</h3>
+    <p>Find who's talking. Returns the best match and all scored candidates.</p>
+<pre><code>result, err := engine.<span class="fn">Identify</span>(<span class="str">"mystery.wav"</span>)
+
+<span class="kw">if</span> result.Identified {
+    fmt.<span class="fn">Printf</span>(<span class="str">"%s (%.1f%%)\n"</span>,
+        result.SpeakerName, result.Score*<span class="num">100</span>)
+}
+
+<span class="cm">// All candidates, ranked</span>
+<span class="kw">for</span> _, m := <span class="kw">range</span> result.AllMatches {
+    fmt.<span class="fn">Printf</span>(<span class="str">"  %s: %.4f\n"</span>, m.SpeakerName, m.Score)
+}</code></pre>
+    <p><code>result.Identified</code> is true when the top score exceeds <code>MatchThreshold</code>.</p>
+  </div>
+
+  <!-- DETECT -->
+  <div class="section" id="detect">
+    <div class="section-title">07</div>
+    <h3>Detect</h3>
+    <p>Verify if audio matches a specific speaker. Binary yes/no with confidence score.</p>
+<pre><code>matched, score, err := engine.<span class="fn">Detect</span>(<span class="str">"audio.wav"</span>, <span class="str">"alice"</span>)
+
+<span class="kw">if</span> matched {
+    fmt.<span class="fn">Printf</span>(<span class="str">"Confirmed: Alice (%.1f%%)\n"</span>, score*<span class="num">100</span>)
+}</code></pre>
+  </div>
+
+  <!-- PERSISTENCE -->
+  <div class="section" id="persistence">
+    <div class="section-title">08</div>
+    <h3>Persistence</h3>
+    <p>Save enrolled speakers to disk. Load them back on next startup.</p>
+<pre><code><span class="cm">// Save</span>
+engine.<span class="fn">SaveDatabase</span>(<span class="str">"./speaker_db"</span>)
+
+<span class="cm">// Load</span>
+engine.<span class="fn">LoadDatabase</span>(<span class="str">"./speaker_db"</span>)</code></pre>
+    <p>Each speaker is stored as a JSON file. The directory is created automatically.</p>
+  </div>
+
+  <!-- CONFIG -->
+  <div class="section" id="config">
+    <div class="section-title">09</div>
+    <h3>Configuration</h3>
+<pre><code>cfg := gcv.<span class="fn">DefaultConfig</span>()
+cfg.MatchThreshold = <span class="num">0.85</span>  <span class="cm">// stricter matching</span>
+cfg.TrainMethod = <span class="str">"centroid"</span>
+
+engine := gcv.<span class="fn">NewEngine</span>(cfg)</code></pre>
+    <table>
+      <tr><th>Field</th><th>Default</th><th>What it does</th></tr>
+      <tr><td>MatchThreshold</td><td>0.5</td><td>Minimum score to accept a match (0.0–1.0)</td></tr>
+      <tr><td>TrainMethod</td><td>"centroid"</td><td>Algorithm: "centroid", "gmm", or "dtw"</td></tr>
+      <tr><td>GMMComponents</td><td>8</td><td>Number of GMM mixture components</td></tr>
+      <tr><td>NumMFCC</td><td>13</td><td>MFCC coefficients per frame</td></tr>
+      <tr><td>NumFilters</td><td>26</td><td>Mel filter bank size</td></tr>
+      <tr><td>FFTSize</td><td>512</td><td>FFT window (power of 2)</td></tr>
+    </table>
+    <p>Threshold guide:</p>
+    <table>
+      <tr><td>0.5</td><td>Lenient. Default. Good for clean audio.</td></tr>
+      <tr><td>0.7</td><td>Moderate. Recommended for real-world use.</td></tr>
+      <tr><td>0.85</td><td>Strict. Fewer false positives.</td></tr>
+      <tr><td>0.95</td><td>Very strict. Almost no false positives.</td></tr>
+    </table>
+  </div>
+
+  <!-- PIPELINE -->
+  <div class="section" id="pipeline">
+    <div class="section-title">10</div>
+    <h3>How It Works</h3>
+    <p>The full pipeline from audio file to speaker identity:</p>
+    <div class="pipeline">
+      <div class="pipe-step">
+        <div class="pipe-line"></div>
+        <div class="pipe-content">
+          <div class="pipe-label">Audio Decoder</div>
+          <div class="pipe-detail">WAV/MP3 to mono float64 samples</div>
+          <div class="pipe-code">gopxl/beep</div>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-line"></div>
+        <div class="pipe-content">
+          <div class="pipe-label">Pre-emphasis + Framing</div>
+          <div class="pipe-detail">High-pass filter, 25ms frames, 10ms hop, Hamming window</div>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-line"></div>
+        <div class="pipe-content">
+          <div class="pipe-label">FFT + Power Spectrum</div>
+          <div class="pipe-detail">Cooley-Tukey radix-2 FFT, squared magnitude</div>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-line"></div>
+        <div class="pipe-content">
+          <div class="pipe-label">Mel Filter Bank + Log</div>
+          <div class="pipe-detail">26 triangular filters, log energy</div>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-line"></div>
+        <div class="pipe-content">
+          <div class="pipe-label">DCT + Deltas</div>
+          <div class="pipe-detail">13 MFCC + 13 delta + 13 delta-delta = 42 features</div>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-line"></div>
+        <div class="pipe-content">
+          <div class="pipe-label">Speaker Model</div>
+          <div class="pipe-detail">Centroid, GMM, or DTW matching</div>
+        </div>
+      </div>
+      <div class="pipe-step">
+        <div class="pipe-line"></div>
+        <div class="pipe-content">
+          <div class="pipe-label">Cosine + Mahalanobis</div>
+          <div class="pipe-detail">Score against enrolled speakers</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCORING -->
+  <div class="section" id="scoring">
+    <div class="section-title">11</div>
+    <h3>Scoring</h3>
+    <p>Scores range from 0.0 to 1.0. Higher = better match.</p>
+    <div class="score-bar">
+      <div class="score-row">
+        <div class="score-label">1.00</div>
+        <div class="score-track"><div class="score-fill" style="width:100%"></div></div>
+        <div class="score-text">Perfect self-match</div>
+      </div>
+      <div class="score-row">
+        <div class="score-label">0.85</div>
+        <div class="score-track"><div class="score-fill" style="width:85%"></div></div>
+        <div class="score-text">Strong match, same speaker</div>
+      </div>
+      <div class="score-row">
+        <div class="score-label">0.70</div>
+        <div class="score-track"><div class="score-fill" style="width:70%"></div></div>
+        <div class="score-text">Weak, possibly same speaker</div>
+      </div>
+      <div class="score-row">
+        <div class="score-label">0.50</div>
+        <div class="score-track"><div class="score-fill" style="width:50%"></div></div>
+        <div class="score-text">Low confidence</div>
+      </div>
+      <div class="score-row">
+        <div class="score-label">&lt;0.5</div>
+        <div class="score-track"><div class="score-fill" style="width:30%"></div></div>
+        <div class="score-text">Different speaker</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AUDIO -->
+  <div class="section" id="audio">
+    <div class="section-title">12</div>
+    <h3>Audio Requirements</h3>
+    <table>
+      <tr><th>Parameter</th><th>Recommended</th><th>Notes</th></tr>
+      <tr><td>Format</td><td>WAV (16-bit PCM)</td><td>MP3 also supported</td></tr>
+      <tr><td>Sample rate</td><td>16000 Hz</td><td>Any rate works, 16k is standard for speech</td></tr>
+      <tr><td>Duration</td><td>1–10 seconds</td><td>Longer = more accurate</td></tr>
+      <tr><td>Channels</td><td>Mono or stereo</td><td>Stereo auto-mixed to mono</td></tr>
+      <tr><td>Per speaker</td><td>2–5 files</td><td>More files = better accuracy</td></tr>
+    </table>
+  </div>
+
+  <!-- METHODS -->
+  <div class="section" id="methods">
+    <div class="section-title">13</div>
+    <h3>Training Methods</h3>
+    <table>
+      <tr><th>Method</th><th>Speed</th><th>Accuracy</th><th>Best For</th></tr>
+      <tr><td>centroid</td><td>Fast</td><td>Good</td><td>Clean audio, many samples (default)</td></tr>
+      <tr><td>gmm</td><td>Slow</td><td>Best</td><td>Noisy audio, large datasets</td></tr>
+      <tr><td>dtw</td><td>Medium</td><td>High</td><td>Variable-length sequences</td></tr>
+    </table>
+  </div>
+
+  <!-- FEATURES -->
+  <div class="section" id="features">
+    <div class="section-title">14</div>
+    <h3>Feature Extraction</h3>
+    <p>Extract MFCC features without the engine. Useful for custom pipelines.</p>
+<pre><code><span class="cm">// From file</span>
+features, _ := engine.<span class="fn">ExtractFeatures</span>(<span class="str">"audio.wav"</span>)
+
+<span class="cm">// From raw samples</span>
+features := gcv.<span class="fn">ExtractMFCC</span>(samples, sampleRate)
+
+<span class="cm">// features: [][]float64 — [numFrames][42]</span>
+<span class="cm">//   [0:14]  MFCC (13 coefficients + log energy)</span>
+<span class="cm">//   [14:28] delta (1st derivative)</span>
+<span class="cm">//   [28:42] delta-delta (2nd derivative)</span></code></pre>
+  </div>
+
+  <!-- STREAMING -->
+  <div class="section" id="streaming">
+    <div class="section-title">15</div>
+    <h3>Streaming</h3>
+    <p>For live microphone, websocket, or chunked file input. Push samples as they arrive, identify in fixed-size chunks.</p>
+<pre><code>engine := gcv.<span class="fn">NewEngine</span>(gcv.<span class="fn">DefaultConfig</span>())
+engine.<span class="fn">EnrollSpeaker</span>(<span class="str">"alice"</span>, <span class="str">"Alice"</span>, []<span class="kw">string</span>{<span class="str">"alice.wav"</span>})
+
+<span class="cm">// Identify every 1 second</span>
+buf := engine.<span class="fn">NewStreamBuffer</span>(<span class="num">16000</span>, <span class="num">1.0</span>)
+
+<span class="cm">// Push chunks from mic/websocket/file</span>
+<span class="kw">for</span> chunk := <span class="kw">range</span> audioChan {
+    buf.<span class="fn">Write</span>(chunk)
+
+    <span class="kw">if</span> result, ok := buf.<span class="fn">Identify</span>(); ok {
+        fmt.<span class="fn">Printf</span>(<span class="str">"%s (%.1f%%)\n"</span>,
+            result.SpeakerName, result.Score*<span class="num">100</span>)
+    }
+}
+
+<span class="cm">// Final ID on all accumulated audio</span>
+result := buf.<span class="fn">IdentifyFull</span>()</code></pre>
+    <table>
+      <tr><th>Method</th><th>When to use</th></tr>
+      <tr><td>Write(samples)</td><td>Push audio chunks from mic/websocket/file</td></tr>
+      <tr><td>Identify()</td><td>Runs when enough audio accumulated</td></tr>
+      <tr><td>IdentifyFull()</td><td>Use at stream end for final ID</td></tr>
+      <tr><td>Reset()</td><td>Clear buffer between speakers</td></tr>
+      <tr><td>Duration()</td><td>Check buffered audio duration</td></tr>
+    </table>
+  </div>
+
+  <!-- COMPARISON -->
+  <div class="section" id="comparison">
+    <div class="section-title">16</div>
+    <h3>vs Python Alternatives</h3>
+    <p>Honest comparison with popular Python speaker identification libraries.</p>
+    <table>
+      <tr><th></th><th>GCV (this)</th><th>speechbrain</th><th>resemblyzer</th><th>pyannote</th></tr>
+      <tr><td>Language</td><td>Go</td><td>Python</td><td>Python</td><td>Python</td></tr>
+      <tr><td>Algorithm</td><td>MFCC + centroid/GMM</td><td>ECAPA-TDNN (neural)</td><td>d-vector (neural)</td><td>PyanNet (neural)</td></tr>
+      <tr><td>Accuracy</td><td>~80-90%</td><td>~95-98%</td><td>~90-95%</td><td>~93-97%</td></tr>
+      <tr><td>Dependencies</td><td>2 packages</td><td>PyTorch + 10+</td><td>PyTorch + 5+</td><td>PyTorch + 8+</td></tr>
+      <tr><td>Install size</td><td>~10 MB</td><td>~2 GB+</td><td>~2 GB+</td><td>~2 GB+</td></tr>
+      <tr><td>Streaming</td><td>Yes</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+      <tr><td>Diarization</td><td>No</td><td>Yes</td><td>No</td><td>Yes</td></tr>
+    </table>
+    <p><strong>When to use GCV:</strong> Go service with no Python runtime, minimal dependencies, ~80-90% accuracy is acceptable, lightweight embedded solution.</p>
+    <p><strong>When to use Python:</strong> Maximum accuracy needed, noisy real-world audio, speaker diarization, ML research pipeline.</p>
+    <div class="callout">
+      <p><strong>The accuracy gap</strong> exists because Python libraries use deep neural networks trained on thousands of hours of speech. GCV uses traditional DSP (MFCC + statistical models). GCV works well for clean, controlled audio with distinct speakers.</p>
+    </div>
+  </div>
+
+  <!-- CLI -->
+  <div class="section" id="cli">
+    <div class="section-title">17</div>
+    <h3>CLI</h3>
+<pre><code><span class="cm"># Build</span>
+<span class="kw">go</span> build -o gcv ./cmd/gcv/
+
+<span class="cm"># Enroll</span>
+./gcv enroll alice <span class="str">"Alice"</span> alice_01.wav alice_02.wav
+
+<span class="cm"># Identify</span>
+./gcv identify mystery.wav
+
+<span class="cm"># Verify</span>
+./gcv detect mystery.wav alice
+
+<span class="cm"># List</span>
+./gcv list
+
+<span class="cm"># Show features</span>
+./gcv features audio.wav</code></pre>
+  </div>
+
+  <!-- TESTING -->
+  <div class="section" id="testing">
+    <div class="section-title">18</div>
+    <h3>Testing</h3>
+<pre><code><span class="kw">go</span> test ./... -v
+<span class="kw">go</span> test -race ./...
+<span class="kw">go</span> vet ./...</code></pre>
+    <p>100+ tests across all packages. Race detector clean.</p>
+  </div>
+
+  <div style="padding:48px 64px;color:var(--text-muted);font-family:var(--mono);font-size:12px;">
+    go-cognitive-voice v0.1.0 &middot; MIT License
+  </div>
+
+</main>
+</div>
+
+<script>
+  // Active nav highlighting
+  const sections = document.querySelectorAll('.section, .hero');
+  const navLinks = document.querySelectorAll('.nav-link');
+
+  const observer = new IntersectionObserver(entries => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const id = entry.target.id;
+        navLinks.forEach(link => {
+          link.classList.toggle('active', link.getAttribute('href') === '#' + id);
+        });
+      }
+    });
+  }, { rootMargin: '-20% 0px -70% 0px' });
+
+  sections.forEach(s => { if (s.id) observer.observe(s); });
+</script>
+
+</body>
+</html>
