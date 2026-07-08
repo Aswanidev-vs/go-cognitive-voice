@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Advanced Example — GCV</title>
+<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  :root{--bg:#0a0a0a;--surface:#111;--border:#1e1e1e;--text:#e0e0e0;--text-dim:#666;--text-muted:#444;--accent-warm:#c8a96e;--mono:'JetBrains Mono',monospace;--sans:'IBM Plex Sans',system-ui,sans-serif}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
+  .topbar{padding:20px 48px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px}
+  .topbar a{font-family:var(--mono);font-size:13px;color:var(--text-dim);text-decoration:none}
+  .topbar a:hover{color:var(--text)}
+  .topbar .sep{color:var(--text-muted)}
+  .content{max-width:780px;padding:48px}
+  h1{font-family:var(--mono);font-size:28px;font-weight:600;margin-bottom:8px}
+  .subtitle{color:var(--text-dim);margin-bottom:32px}
+  h2{font-family:var(--mono);font-size:14px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin:32px 0 12px}
+  p{color:var(--text-dim);margin-bottom:16px;max-width:640px}
+  pre{background:var(--surface);border:1px solid var(--border);padding:24px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.65;margin:16px 0}
+  code{font-family:var(--mono);font-size:13px}
+  :not(pre)>code{background:var(--surface);border:1px solid var(--border);padding:2px 6px;font-size:12px;color:var(--accent-warm)}
+  .kw{color:#c8a96e}.fn{color:#e0e0e0}.str{color:#7a9e7e}.cm{color:#444;font-style:italic}.num{color:#b08d6e}
+  .step{margin:24px 0;padding-left:20px;border-left:2px solid var(--border)}
+  .step-num{font-family:var(--mono);font-size:11px;color:var(--text-muted);letter-spacing:1px;margin-bottom:4px}
+  .step h3{font-size:16px;font-weight:500;margin-bottom:4px}
+  .run-cmd{background:var(--surface);border:1px solid var(--border);padding:16px 20px;font-family:var(--mono);font-size:13px;color:var(--accent-warm);margin:16px 0}
+  .run-cmd span{color:var(--text-muted)}
+  .callout{border-left:2px solid var(--border);padding:16px 20px;margin:16px 0}
+  .callout p{margin:0;font-size:14px}
+  .callout strong{color:var(--text)}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  td{padding:8px 12px 8px 0;border-bottom:1px solid var(--border);color:var(--text-dim);vertical-align:top}
+  td:first-child{color:var(--text);font-family:var(--mono);font-size:13px;white-space:nowrap}
+  .nav-btns{display:flex;gap:12px;margin-top:40px;padding-top:24px;border-top:1px solid var(--border)}
+  .nav-btns a{font-family:var(--mono);font-size:13px;color:var(--text-dim);text-decoration:none;padding:8px 16px;border:1px solid var(--border);transition:all 0.15s}
+  .nav-btns a:hover{color:var(--text);border-color:var(--text-dim)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a href="index.html">GCV</a><span class="sep">/</span>
+  <a href="examples.html">Examples</a><span class="sep">/</span>
+  <span style="font-family:var(--mono);font-size:13px;color:var(--text)">Advanced</span>
+</div>
+<div class="content">
+  <h1>Advanced: Persistence & Verification</h1>
+  <p class="subtitle">Save/load speaker database, tune thresholds, verify specific speakers.</p>
+
+  <h2>The Code</h2>
+<pre><code><span class="kw">package</span> main
+
+<span class="kw">import</span> (
+    <span class="str">"fmt"</span>
+    <span class="str">"os"</span>
+    <span class="str">"github.com/Aswanidev-vs/go-cognitive-voice/pkg/gcv"</span>
+)
+
+<span class="kw">const</span> dbDir = <span class="str">"./speaker_db"</span>
+
+<span class="kw">func</span> <span class="fn">main</span>() {
+    cfg := gcv.<span class="fn">DefaultConfig</span>()
+    cfg.MatchThreshold = <span class="num">0.85</span> <span class="cm">// stricter matching</span>
+
+    engine := gcv.<span class="fn">NewEngine</span>(cfg)
+
+    <span class="cm">// Load existing database (if any)</span>
+    engine.<span class="fn">LoadDatabase</span>(dbDir)
+
+    <span class="cm">// Enroll speakers</span>
+    engine.<span class="fn">EnrollSpeaker</span>(<span class="str">"alice"</span>, <span class="str">"Alice"</span>, []<span class="kw">string</span>{<span class="str">"alice.wav"</span>})
+    engine.<span class="fn">EnrollSpeaker</span>(<span class="str">"bob"</span>, <span class="str">"Bob"</span>, []<span class="kw">string</span>{<span class="str">"bob.wav"</span>})
+
+    <span class="cm">// Save for next run</span>
+    engine.<span class="fn">SaveDatabase</span>(dbDir)
+
+    <span class="cm">// Identify</span>
+    result, _ := engine.<span class="fn">Identify</span>(<span class="str">"mystery.wav"</span>)
+    fmt.<span class="fn">Printf</span>(<span class="str">"%s (%.1f%%)\n"</span>, result.SpeakerName, result.Score*<span class="num">100</span>)
+
+    <span class="cm">// Verify specific speaker</span>
+    matched, score, _ := engine.<span class="fn">Detect</span>(<span class="str">"mystery.wav"</span>, <span class="str">"alice"</span>)
+    fmt.<span class="fn">Printf</span>(<span class="str">"Is Alice? %v (score: %.4f)\n"</span>, matched, score)
+
+    <span class="cm">// List all speakers</span>
+    <span class="kw">for</span> _, s := <span class="kw">range</span> engine.<span class="fn">ListSpeakers</span>() {
+        fmt.<span class="fn">Printf</span>(<span class="str">"  %s: %s (%d samples)\n"</span>, s.ID, s.Name, s.NumSamples)
+    }
+}</code></pre>
+
+  <h2>What's Different from Basic</h2>
+
+  <div class="step">
+    <div class="step-num">PERSISTENCE</div>
+    <h3>SaveDatabase / LoadDatabase</h3>
+    <p>Saves enrolled speakers as JSON files. Load them on next startup without re-enrolling. Each speaker is one JSON file.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">THRESHOLD</div>
+    <h3>MatchThreshold = 0.85</h3>
+    <p>Higher threshold = fewer false positives. Default is 0.5 (lenient). Use 0.7 for production, 0.85 for strict.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">VERIFY</div>
+    <h3>Detect (binary verification)</h3>
+    <p><code>Detect(audio, speakerID)</code> returns (matched, score, error). Use this when you know who you're looking for.</p>
+  </div>
+
+  <h2>Run It</h2>
+<div class="run-cmd"><span>$</span> go run examples/advanced/main.go</div>
+
+  <h2>Output</h2>
+<pre><code>Enrolled: Alice (alice)
+Enrolled: Bob (bob)
+Database saved to ./speaker_db
+
+=== Identification ===
+  alice.wav → Alice (88.1%)
+  bob.wav   → Bob (85.3%)
+
+=== Verification (threshold: 0.85) ===
+  alice.wav → alice: PASS (0.8806)
+  alice.wav → bob:   FAIL (0.6515)
+  bob.wav   → alice: FAIL (0.6515)
+  bob.wav   → bob:   PASS (0.8530)
+
+=== Enrolled Speakers ===
+  alice      Alice        3477 samples
+  bob        Bob          2991 samples</code></pre>
+
+  <h2>Threshold Guide</h2>
+  <table>
+    <tr><td>0.5</td><td>Default. Lenient. Good for clean audio.</td></tr>
+    <tr><td>0.7</td><td>Moderate. Recommended for production.</td></tr>
+    <tr><td>0.85</td><td>Strict. Fewer false positives.</td></tr>
+    <tr><td>0.95</td><td>Very strict. Almost no false positives.</td></tr>
+  </table>
+
+  <div class="nav-btns">
+    <a href="example-basic.html">← Basic</a>
+    <a href="example-streaming.html">Streaming →</a>
+  </div>
+</div>
+</body>
+</html>

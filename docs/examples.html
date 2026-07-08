@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Examples — GCV</title>
+<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  :root{--bg:#0a0a0a;--surface:#111;--border:#1e1e1e;--text:#e0e0e0;--text-dim:#666;--text-muted:#444;--accent-warm:#c8a96e;--mono:'JetBrains Mono',monospace;--sans:'IBM Plex Sans',system-ui,sans-serif}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
+
+  .topbar{padding:20px 48px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px}
+  .topbar a{font-family:var(--mono);font-size:13px;color:var(--text-dim);text-decoration:none}
+  .topbar a:hover{color:var(--text)}
+  .topbar .sep{color:var(--text-muted)}
+
+  .hero{padding:48px 48px 32px;border-bottom:1px solid var(--border)}
+  .hero h1{font-family:var(--mono);font-size:28px;font-weight:600;letter-spacing:-0.5px;margin-bottom:8px}
+  .hero p{color:var(--text-dim);max-width:560px}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);margin:0;border-bottom:1px solid var(--border)}
+  .card{background:var(--bg);padding:32px 48px;text-decoration:none;color:inherit;transition:background 0.15s}
+  .card:hover{background:var(--surface)}
+  .card-num{font-family:var(--mono);font-size:11px;color:var(--text-muted);letter-spacing:1px;margin-bottom:8px}
+  .card h3{font-family:var(--mono);font-size:16px;font-weight:600;margin-bottom:6px}
+  .card p{font-size:13px;color:var(--text-dim);line-height:1.5}
+  .card .tag{display:inline-block;font-family:var(--mono);font-size:11px;padding:2px 8px;border:1px solid var(--border);color:var(--text-muted);margin-top:10px}
+
+  @media(max-width:700px){.grid{grid-template-columns:1fr}.hero,.card,.topbar{padding-left:20px;padding-right:20px}}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="index.html">GCV</a>
+  <span class="sep">/</span>
+  <span style="font-family:var(--mono);font-size:13px;color:var(--text)">Examples</span>
+</div>
+
+<div class="hero">
+  <h1>Examples</h1>
+  <p>Runnable code for every feature. Copy, paste, run.</p>
+</div>
+
+<div class="grid">
+  <a href="example-basic.html" class="card">
+    <div class="card-num">01</div>
+    <h3>Basic</h3>
+    <p>Minimal speaker identification. Enroll 2 speakers, identify an unknown voice. 10 lines of code.</p>
+    <span class="tag">10 lines</span>
+  </a>
+  <a href="example-advanced.html" class="card">
+    <div class="card-num">02</div>
+    <h3>Advanced</h3>
+    <p>Persistence, threshold tuning, speaker verification with PASS/FAIL results.</p>
+    <span class="tag">production</span>
+  </a>
+  <a href="example-streaming.html" class="card">
+    <div class="card-num">03</div>
+    <h3>Streaming</h3>
+    <p>Real-time identification from chunked audio. Works with mic, websocket, or file streams.</p>
+    <span class="tag">real-time</span>
+  </a>
+  <a href="example-mfcc.html" class="card">
+    <div class="card-num">04</div>
+    <h3>MFCC Extraction</h3>
+    <p>Extract voice features without the engine. Feed into your own ML pipeline.</p>
+    <span class="tag">features only</span>
+  </a>
+  <a href="example-neural.html" class="card">
+    <div class="card-num">05</div>
+    <h3>Neural + i-vector</h3>
+    <p>Enable the custom neural network and PLDA scoring for ~85-93% accuracy.</p>
+    <span class="tag">advanced ML</span>
+  </a>
+  <a href="example-websocket.html" class="card">
+    <div class="card-num">06</div>
+    <h3>WebSocket Server</h3>
+    <p>Build a real-time speaker ID API server. Accept audio over WebSocket, return speaker identity.</p>
+    <span class="tag">server</span>
+  </a>
+</div>
+
+</body>
+</html>

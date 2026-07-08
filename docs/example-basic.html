@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Basic Example — GCV</title>
+<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  :root{--bg:#0a0a0a;--surface:#111;--border:#1e1e1e;--text:#e0e0e0;--text-dim:#666;--text-muted:#444;--accent-warm:#c8a96e;--mono:'JetBrains Mono',monospace;--sans:'IBM Plex Sans',system-ui,sans-serif}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
+  .topbar{padding:20px 48px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px}
+  .topbar a{font-family:var(--mono);font-size:13px;color:var(--text-dim);text-decoration:none}
+  .topbar a:hover{color:var(--text)}
+  .topbar .sep{color:var(--text-muted)}
+  .content{max-width:780px;padding:48px}
+  h1{font-family:var(--mono);font-size:28px;font-weight:600;margin-bottom:8px}
+  .subtitle{color:var(--text-dim);margin-bottom:32px}
+  h2{font-family:var(--mono);font-size:14px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin:32px 0 12px}
+  p{color:var(--text-dim);margin-bottom:16px;max-width:640px}
+  pre{background:var(--surface);border:1px solid var(--border);padding:24px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.65;margin:16px 0}
+  code{font-family:var(--mono);font-size:13px}
+  :not(pre)>code{background:var(--surface);border:1px solid var(--border);padding:2px 6px;font-size:12px;color:var(--accent-warm)}
+  .kw{color:#c8a96e}.fn{color:#e0e0e0}.str{color:#7a9e7e}.cm{color:#444;font-style:italic}.num{color:#b08d6e}
+  .step{margin:24px 0;padding-left:20px;border-left:2px solid var(--border)}
+  .step-num{font-family:var(--mono);font-size:11px;color:var(--text-muted);letter-spacing:1px;margin-bottom:4px}
+  .step h3{font-size:16px;font-weight:500;margin-bottom:4px}
+  .run-cmd{background:var(--surface);border:1px solid var(--border);padding:16px 20px;font-family:var(--mono);font-size:13px;color:var(--accent-warm);margin:16px 0}
+  .run-cmd span{color:var(--text-muted)}
+  .callout{border-left:2px solid var(--border);padding:16px 20px;margin:16px 0}
+  .callout p{margin:0;font-size:14px}
+  .callout strong{color:var(--text)}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  td{padding:8px 12px 8px 0;border-bottom:1px solid var(--border);color:var(--text-dim);vertical-align:top}
+  td:first-child{color:var(--text);font-family:var(--mono);font-size:13px;white-space:nowrap}
+  .nav-btns{display:flex;gap:12px;margin-top:40px;padding-top:24px;border-top:1px solid var(--border)}
+  .nav-btns a{font-family:var(--mono);font-size:13px;color:var(--text-dim);text-decoration:none;padding:8px 16px;border:1px solid var(--border);transition:all 0.15s}
+  .nav-btns a:hover{color:var(--text);border-color:var(--text-dim)}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="index.html">GCV</a>
+  <span class="sep">/</span>
+  <a href="examples.html">Examples</a>
+  <span class="sep">/</span>
+  <span style="font-family:var(--mono);font-size:13px;color:var(--text)">Basic</span>
+</div>
+
+<div class="content">
+  <h1>Basic Speaker Identification</h1>
+  <p class="subtitle">Enroll speakers, identify an unknown voice. 10 lines of code.</p>
+
+  <h2>The Code</h2>
+<pre><code><span class="kw">package</span> main
+
+<span class="kw">import</span> (
+    <span class="str">"fmt"</span>
+    <span class="str">"os"</span>
+    <span class="str">"github.com/Aswanidev-vs/go-cognitive-voice/pkg/gcv"</span>
+)
+
+<span class="kw">func</span> <span class="fn">main</span>() {
+    <span class="cm">// 1. Create engine with defaults</span>
+    engine := gcv.<span class="fn">NewEngine</span>(gcv.<span class="fn">DefaultConfig</span>())
+
+    <span class="cm">// 2. Enroll speakers</span>
+    engine.<span class="fn">EnrollSpeaker</span>(<span class="str">"alice"</span>, <span class="str">"Alice"</span>, []<span class="kw">string</span>{
+        <span class="str">"recordings/alice_01.wav"</span>,
+        <span class="str">"recordings/alice_02.wav"</span>,
+    })
+    engine.<span class="fn">EnrollSpeaker</span>(<span class="str">"bob"</span>, <span class="str">"Bob"</span>, []<span class="kw">string</span>{
+        <span class="str">"recordings/bob_01.wav"</span>,
+    })
+
+    <span class="cm">// 3. Identify an unknown voice</span>
+    result, err := engine.<span class="fn">Identify</span>(<span class="str">"recordings/mystery.wav"</span>)
+    <span class="kw">if</span> err != <span class="kw">nil</span> {
+        fmt.<span class="fn">Fprintln</span>(os.Stderr, err)
+        os.<span class="fn">Exit</span>(<span class="num">1</span>)
+    }
+
+    <span class="kw">if</span> result.Identified {
+        fmt.<span class="fn">Printf</span>(<span class="str">"Speaker: %s (confidence: %.1f%%)\n"</span>,
+            result.SpeakerName, result.Score*<span class="num">100</span>)
+    } <span class="kw">else</span> {
+        fmt.<span class="fn">Println</span>(<span class="str">"No matching speaker found."</span>)
+    }
+
+    <span class="cm">// 4. Show all candidates</span>
+    <span class="kw">for</span> _, m := <span class="kw">range</span> result.AllMatches {
+        fmt.<span class="fn">Printf</span>(<span class="str">"  %-10s score: %.4f\n"</span>, m.SpeakerName, m.Score)
+    }
+}</code></pre>
+
+  <h2>How It Works</h2>
+
+  <div class="step">
+    <div class="step-num">STEP 1</div>
+    <h3>Create the engine</h3>
+    <p><code>NewEngine(DefaultConfig())</code> creates an engine with default settings. Uses centroid matching, 0.5 threshold, 13 MFCC coefficients.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">STEP 2</div>
+    <h3>Enroll speakers</h3>
+    <p>Call <code>EnrollSpeaker</code> for each person. Provide 1+ audio files per speaker. More files = better accuracy. Supported formats: WAV, MP3.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">STEP 3</div>
+    <h3>Identify</h3>
+    <p><code>Identify("mystery.wav")</code> extracts MFCC features from the audio, compares against all enrolled speakers, and returns the best match.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">STEP 4</div>
+    <h3>Read results</h3>
+    <p><code>result.Identified</code> is true when the top score exceeds the threshold. <code>result.AllMatches</code> has all candidates ranked by score.</p>
+  </div>
+
+  <h2>Run It</h2>
+<div class="run-cmd"><span>$</span> go run examples/basic/main.go</div>
+
+  <h2>Output</h2>
+<pre><code>Speaker: Alice (confidence: 88.1%)
+
+All matches:
+  Alice      score: 0.8806
+  Bob        score: 0.6515</code></pre>
+
+  <h2>Key Concepts</h2>
+  <table>
+    <tr><td>EnrollSpeaker(id, name, files)</td><td>Register a speaker. ID must be unique. Re-enrolling same ID replaces the old model.</td></tr>
+    <tr><td>Identify(audioPath)</td><td>Find who's talking. Returns best match + all candidates.</td></tr>
+    <tr><td>result.Identified</td><td>True when top score >= MatchThreshold (default 0.5).</td></tr>
+    <tr><td>result.Score</td><td>Confidence score 0.0–1.0. Higher = better match.</td></tr>
+  </table>
+
+  <div class="callout">
+    <p><strong>Tip:</strong> Use 2-5 audio files per speaker for best accuracy. Each file should be 1-10 seconds of clear speech.</p>
+  </div>
+
+  <div class="nav-btns">
+    <a href="examples.html">← All Examples</a>
+    <a href="example-advanced.html">Advanced →</a>
+  </div>
+</div>
+
+</body>
+</html>

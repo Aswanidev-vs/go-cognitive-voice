@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Streaming Example — GCV</title>
+<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  :root{--bg:#0a0a0a;--surface:#111;--border:#1e1e1e;--text:#e0e0e0;--text-dim:#666;--text-muted:#444;--accent-warm:#c8a96e;--mono:'JetBrains Mono',monospace;--sans:'IBM Plex Sans',system-ui,sans-serif}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
+  .topbar{padding:20px 48px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px}
+  .topbar a{font-family:var(--mono);font-size:13px;color:var(--text-dim);text-decoration:none}
+  .topbar a:hover{color:var(--text)}
+  .topbar .sep{color:var(--text-muted)}
+  .content{max-width:780px;padding:48px}
+  h1{font-family:var(--mono);font-size:28px;font-weight:600;margin-bottom:8px}
+  .subtitle{color:var(--text-dim);margin-bottom:32px}
+  h2{font-family:var(--mono);font-size:14px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin:32px 0 12px}
+  p{color:var(--text-dim);margin-bottom:16px;max-width:640px}
+  pre{background:var(--surface);border:1px solid var(--border);padding:24px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.65;margin:16px 0}
+  code{font-family:var(--mono);font-size:13px}
+  :not(pre)>code{background:var(--surface);border:1px solid var(--border);padding:2px 6px;font-size:12px;color:var(--accent-warm)}
+  .kw{color:#c8a96e}.fn{color:#e0e0e0}.str{color:#7a9e7e}.cm{color:#444;font-style:italic}.num{color:#b08d6e}
+  .step{margin:24px 0;padding-left:20px;border-left:2px solid var(--border)}
+  .step-num{font-family:var(--mono);font-size:11px;color:var(--text-muted);letter-spacing:1px;margin-bottom:4px}
+  .step h3{font-size:16px;font-weight:500;margin-bottom:4px}
+  .run-cmd{background:var(--surface);border:1px solid var(--border);padding:16px 20px;font-family:var(--mono);font-size:13px;color:var(--accent-warm);margin:16px 0}
+  .run-cmd span{color:var(--text-muted)}
+  .callout{border-left:2px solid var(--border);padding:16px 20px;margin:16px 0}
+  .callout p{margin:0;font-size:14px}
+  .callout strong{color:var(--text)}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  td{padding:8px 12px 8px 0;border-bottom:1px solid var(--border);color:var(--text-dim);vertical-align:top}
+  td:first-child{color:var(--text);font-family:var(--mono);font-size:13px;white-space:nowrap}
+  .nav-btns{display:flex;gap:12px;margin-top:40px;padding-top:24px;border-top:1px solid var(--border)}
+  .nav-btns a{font-family:var(--mono);font-size:13px;color:var(--text-dim);text-decoration:none;padding:8px 16px;border:1px solid var(--border);transition:all 0.15s}
+  .nav-btns a:hover{color:var(--text);border-color:var(--text-dim)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a href="index.html">GCV</a><span class="sep">/</span>
+  <a href="examples.html">Examples</a><span class="sep">/</span>
+  <span style="font-family:var(--mono);font-size:13px;color:var(--text)">Streaming</span>
+</div>
+<div class="content">
+  <h1>Streaming Audio</h1>
+  <p class="subtitle">Real-time speaker identification from chunked audio. Works with microphone, websocket, or file streams.</p>
+
+  <h2>The Code</h2>
+<pre><code><span class="kw">package</span> main
+
+<span class="kw">import</span> (
+    <span class="str">"fmt"</span>
+    <span class="str">"os"</span>
+    <span class="str">"github.com/Aswanidev-vs/go-cognitive-voice/pkg/gcv"</span>
+)
+
+<span class="kw">func</span> <span class="fn">main</span>() {
+    path := os.Args[<span class="num">1</span>]
+    sampleRate := <span class="num">16000</span>
+    chunkSize := sampleRate / <span class="num">4</span> <span class="cm">// 250ms chunks</span>
+
+    <span class="cm">// Load audio (in real usage, read from mic/websocket)</span>
+    samples, sr, _ := gcv.<span class="fn">ReadAudio</span>(path)
+    <span class="kw">if</span> sr != sampleRate { sampleRate = sr; chunkSize = sampleRate / <span class="num">4</span> }
+
+    engine := gcv.<span class="fn">NewEngine</span>(gcv.<span class="fn">DefaultConfig</span>())
+
+    <span class="cm">// Create streaming buffer — identify every 1 second</span>
+    buf := engine.<span class="fn">NewStreamBuffer</span>(sampleRate, <span class="num">1.0</span>)
+
+    <span class="cm">// Push chunks</span>
+    <span class="kw">for</span> i := <span class="num">0</span>; i < len(samples); i += chunkSize {
+        end := i + chunkSize
+        <span class="kw">if</span> end > len(samples) { end = len(samples) }
+        buf.<span class="fn">Write</span>(samples[i:end])
+
+        <span class="kw">if</span> result, ok := buf.<span class="fn">Identify</span>(); ok {
+            fmt.<span class="fn">Printf</span>(<span class="str">"[%.1fs] %s (score: %.3f)\n"</span>,
+                buf.<span class="fn">Duration</span>()-<span class="num">1.0</span>, result.SpeakerName, result.Score)
+        }
+    }
+
+    <span class="cm">// Final ID on full audio</span>
+    result := buf.<span class="fn">IdentifyFull</span>()
+    fmt.<span class="fn">Printf</span>(<span class="str">"Final: %s (%.3f)\n"</span>, result.SpeakerName, result.Score)
+}</code></pre>
+
+  <h2>How It Works</h2>
+
+  <div class="step">
+    <div class="step-num">STEP 1</div>
+    <h3>Create StreamBuffer</h3>
+    <p><code>NewStreamBuffer(engine, 16000, 1.0)</code> creates a buffer that identifies every 1 second of accumulated audio. Adjust the chunk size for your use case.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">STEP 2</div>
+    <h3>Push chunks with Write()</h3>
+    <p>Feed audio chunks from any source: microphone, websocket, file reader. Chunks can be any size — the buffer handles accumulation.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">STEP 3</div>
+    <h3>Call Identify() after each chunk</h3>
+    <p><code>Identify()</code> returns <code>(result, true)</code> when enough audio has accumulated, or <code>(nil, false)</code> otherwise. Non-blocking.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-num">STEP 4</div>
+    <h3>Final ID with IdentifyFull()</h3>
+    <p>At stream end, call <code>IdentifyFull()</code> for a final identification on ALL accumulated audio.</p>
+  </div>
+
+  <h2>API Reference</h2>
+  <table>
+    <tr><td>NewStreamBuffer(engine, sampleRate, chunkSec)</td><td>Create buffer. chunkSec=1.0 means identify every second.</td></tr>
+    <tr><td>Write(samples)</td><td>Push audio chunk. Mono float64, [-1, 1].</td></tr>
+    <tr><td>Identify()</td><td>Returns (result, true) when chunk ready, (nil, false) otherwise.</td></tr>
+    <tr><td>IdentifyFull()</td><td>Final ID on all accumulated audio.</td></tr>
+    <tr><td>Reset()</td><td>Clear buffer between speakers.</td></tr>
+    <tr><td>Duration()</td><td>How much audio is buffered (seconds).</td></tr>
+  </table>
+
+  <h2>Run It</h2>
+<div class="run-cmd"><span>$</span> go run examples/streaming/main.go audio.wav</div>
+
+  <h2>Output</h2>
+<pre><code>Streaming audio.wav (5.2s, 16000 Hz)
+Chunk size: 4000 samples (250ms)
+
+[0.0s] Alice (score: 0.821)
+[1.0s] Alice (score: 0.856)
+[2.0s] Alice (score: 0.873)
+[3.0s] Bob (score: 0.712)
+[4.0s] Bob (score: 0.789)
+
+--- Final (full buffer) ---
+Speaker: Alice (score: 0.862)
+
+Chunks processed: 21, identified: 5</code></pre>
+
+  <div class="callout">
+    <p><strong>Real-world usage:</strong> Replace the file reader with your audio source. For microphone input, push chunks from your audio callback. For websocket, push chunks as they arrive from the client.</p>
+  </div>
+
+  <div class="nav-btns">
+    <a href="example-advanced.html">← Advanced</a>
+    <a href="example-mfcc.html">MFCC →</a>
+  </div>
+</div>
+</body>
+</html>

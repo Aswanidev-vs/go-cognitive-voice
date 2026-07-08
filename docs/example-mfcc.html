@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MFCC Example — GCV</title>
+<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  :root{--bg:#0a0a0a;--surface:#111;--border:#1e1e1e;--text:#e0e0e0;--text-dim:#666;--text-muted:#444;--accent-warm:#c8a96e;--mono:'JetBrains Mono',monospace;--sans:'IBM Plex Sans',system-ui,sans-serif}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
+  .topbar{padding:20px 48px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px}
+  .topbar a{font-family:var(--mono);font-size:13px;color:var(--text-dim);text-decoration:none}
+  .topbar a:hover{color:var(--text)}
+  .topbar .sep{color:var(--text-muted)}
+  .content{max-width:780px;padding:48px}
+  h1{font-family:var(--mono);font-size:28px;font-weight:600;margin-bottom:8px}
+  .subtitle{color:var(--text-dim);margin-bottom:32px}
+  h2{font-family:var(--mono);font-size:14px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin:32px 0 12px}
+  p{color:var(--text-dim);margin-bottom:16px;max-width:640px}
+  pre{background:var(--surface);border:1px solid var(--border);padding:24px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.65;margin:16px 0}
+  code{font-family:var(--mono);font-size:13px}
+  :not(pre)>code{background:var(--surface);border:1px solid var(--border);padding:2px 6px;font-size:12px;color:var(--accent-warm)}
+  .kw{color:#c8a96e}.fn{color:#e0e0e0}.str{color:#7a9e7e}.cm{color:#444;font-style:italic}.num{color:#b08d6e}
+  .run-cmd{background:var(--surface);border:1px solid var(--border);padding:16px 20px;font-family:var(--mono);font-size:13px;color:var(--accent-warm);margin:16px 0}
+  .run-cmd span{color:var(--text-muted)}
+  .callout{border-left:2px solid var(--border);padding:16px 20px;margin:16px 0}
+  .callout p{margin:0;font-size:14px}
+  .callout strong{color:var(--text)}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  td{padding:8px 12px 8px 0;border-bottom:1px solid var(--border);color:var(--text-dim);vertical-align:top}
+  td:first-child{color:var(--text);font-family:var(--mono);font-size:13px;white-space:nowrap}
+  .nav-btns{display:flex;gap:12px;margin-top:40px;padding-top:24px;border-top:1px solid var(--border)}
+  .nav-btns a{font-family:var(--mono);font-size:13px;color:var(--text-dim);text-decoration:none;padding:8px 16px;border:1px solid var(--border);transition:all 0.15s}
+  .nav-btns a:hover{color:var(--text);border-color:var(--text-dim)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a href="index.html">GCV</a><span class="sep">/</span>
+  <a href="examples.html">Examples</a><span class="sep">/</span>
+  <span style="font-family:var(--mono);font-size:13px;color:var(--text)">MFCC</span>
+</div>
+<div class="content">
+  <h1>MFCC Feature Extraction</h1>
+  <p class="subtitle">Extract voice features without the engine. Feed into your own ML pipeline or analysis tool.</p>
+
+  <h2>The Code</h2>
+<pre><code><span class="kw">package</span> main
+
+<span class="kw">import</span> (
+    <span class="str">"fmt"</span>
+    <span class="str">"os"</span>
+    <span class="str">"github.com/Aswanidev-vs/go-cognitive-voice/pkg/gcv"</span>
+)
+
+<span class="kw">func</span> <span class="fn">main</span>() {
+    path := os.Args[<span class="num">1</span>]
+
+    <span class="cm">// Read audio</span>
+    samples, sampleRate, _ := gcv.<span class="fn">ReadAudio</span>(path)
+    fmt.<span class="fn">Printf</span>(<span class="str">"File: %s\nSample rate: %d Hz\nDuration: %.2fs\nSamples: %d\n\n"</span>,
+        path, sampleRate, <span class="fn">float64</span>(<span class="fn">len</span>(samples))/<span class="fn">float64</span>(sampleRate), <span class="fn">len</span>(samples))
+
+    <span class="cm">// Extract MFCC features</span>
+    features := gcv.<span class="fn">ExtractMFCC</span>(samples, sampleRate)
+
+    fmt.<span class="fn">Printf</span>(<span class="str">"Feature frames: %d\n"</span>, <span class="fn">len</span>(features))
+    fmt.<span class="fn">Printf</span>(<span class="str">"Feature dimension: %d\n\n"</span>, <span class="fn">len</span>(features[<span class="num">0</span>]))
+
+    <span class="cm">// Feature layout</span>
+    fmt.<span class="fn">Println</span>(<span class="str">"Layout:"</span>)
+    fmt.<span class="fn">Println</span>(<span class="str">"  [0:14]  MFCC (13 coefficients + log energy)"</span>)
+    fmt.<span class="fn">Println</span>(<span class="str">"  [14:28] delta (1st derivative)"</span>)
+    fmt.<span class="fn">Println</span>(<span class="str">"  [28:42] delta-delta (2nd derivative)"</span>)
+
+    <span class="cm">// Show first 3 frames</span>
+    <span class="kw">for</span> i := <span class="num">0</span>; i < <span class="num">3</span> && i < <span class="fn">len</span>(features); i++ {
+        fmt.<span class="fn">Printf</span>(<span class="str">"\nFrame %d: ["</span>, i)
+        <span class="kw">for</span> j, v := <span class="kw">range</span> features[i] {
+            <span class="kw">if</span> j > <span class="num">0</span> { fmt.<span class="fn">Print</span>(<span class="str">", "</span>) }
+            fmt.<span class="fn">Printf</span>(<span class="str">"%.2f"</span>, v)
+        }
+        fmt.<span class="fn">Println</span>(<span class="str">"]"</span>)
+    }
+}</code></pre>
+
+  <h2>What Are MFCCs?</h2>
+  <p>MFCCs (Mel-Frequency Cepstral Coefficients) are a compact representation of the spectral envelope of an audio signal. They capture the "shape" of the voice — what makes each speaker sound different.</p>
+
+  <h2>Feature Layout</h2>
+  <table>
+    <tr><td>[0:14]</td><td>13 MFCC coefficients + log energy. Captures spectral shape at each frame.</td></tr>
+    <tr><td>[14:28]</td><td>Delta features. First derivative — how the spectrum changes over time.</td></tr>
+    <tr><td>[28:42]</td><td>Delta-delta. Second derivative — acceleration of spectral change.</td></tr>
+  </table>
+
+  <h2>Run It</h2>
+<div class="run-cmd"><span>$</span> go run examples/mfcc/main.go audio.wav</div>
+
+  <h2>Output</h2>
+<pre><code>File: audio.wav
+Sample rate: 16000 Hz
+Duration: 3.20s
+Samples: 51200
+
+Feature frames: 319
+Feature dimension: 42
+
+Layout:
+  [0:14]  MFCC (13 coefficients + log energy)
+  [14:28] delta (1st derivative)
+  [28:42] delta-delta (2nd derivative)
+
+Frame 0: [-12.12, -921.58, -31.85, 9.99, 8.93, -5.81, -9.13, -0.19, 5.82, 0.47, -1.01, -3.08, 1.52, -2.39, ...]
+Frame 1: [-8.16, -760.58, -20.54, 6.46, -3.20, -1.21, 2.84, 6.33, 1.40, -5.85, -0.11, -1.60, 4.35, -2.67, ...]
+Frame 2: [-6.40, -688.54, -13.33, -0.54, -14.07, 0.51, 3.46, 2.90, -6.37, -13.01, 5.77, -8.50, 4.63, -2.91, ...]</code></pre>
+
+  <div class="callout">
+    <p><strong>Use cases:</strong> Feed features into your own classifier, visualize voice characteristics, compare speakers at the feature level, or build custom matching logic.</p>
+  </div>
+
+  <div class="nav-btns">
+    <a href="example-streaming.html">← Streaming</a>
+    <a href="example-neural.html">Neural →</a>
+  </div>
+</div>
+</body>
+</html>

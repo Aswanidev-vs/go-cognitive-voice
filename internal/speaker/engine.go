@@ -2,6 +2,7 @@ package speaker
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -10,6 +11,8 @@ import (
 
 	"github.com/Aswanidev-vs/go-cognitive-voice/internal/audio"
 	"github.com/Aswanidev-vs/go-cognitive-voice/internal/dsp"
+	"github.com/Aswanidev-vs/go-cognitive-voice/internal/ivector"
+	"github.com/Aswanidev-vs/go-cognitive-voice/internal/neural"
 )
 
 // Engine is the main speaker detection and identification engine.
@@ -18,6 +21,15 @@ type Engine struct {
 	speakers map[string]*SpeakerModel
 	dim      int
 	cfg      EngineConfig
+
+	// Neural network for learned embeddings
+	nn         *neural.Network
+	nnEnrolled map[string][]float64 // speaker ID → embedding
+
+	// i-vector + PLDA
+	ivModel  *ivector.IVectorModel
+	plda     *ivector.PLDAModel
+	ivEnrolled map[string][]float64 // speaker ID → i-vector
 }
 
 // EngineConfig holds engine configuration.
@@ -68,6 +80,36 @@ type EngineConfig struct {
 	// Only used when TrainMethod is "gmm". Default 8.
 	// More components = more expressive but slower.
 	GMMComponents int
+
+	// UseNeural enables the custom neural network for learned embeddings.
+	// Trains a small feedforward net on enrollment data. Default false.
+	UseNeural bool
+
+	// NeuralHidden is the hidden layer sizes for the neural network.
+	// Default: [128, 64]. Larger = more capacity, slower.
+	NeuralHidden []int
+
+	// NeuralEpochs is the number of training epochs. Default 100.
+	NeuralEpochs int
+
+	// UseIVector enables i-vector + PLDA scoring.
+	// More accurate but slower. Default false.
+	UseIVector bool
+
+	// IVDim is the i-vector dimension. Default 128.
+	IVDim int
+
+	// IVComponents is the number of UBM components. Default 64.
+	IVComponents int
+
+	// UseRASTA enables RASTA filtering for noise robustness. Default false.
+	UseRASTA bool
+
+	// UsePLP uses PLP features instead of MFCC. Default false.
+	UsePLP bool
+
+	// UseVAD enables voice activity detection. Default false.
+	UseVAD bool
 }
 
 // DefaultEngineConfig returns default configuration.
@@ -81,6 +123,10 @@ func DefaultEngineConfig() EngineConfig {
 		TopN:           5,
 		TrainMethod:    "centroid",
 		GMMComponents:  8,
+		NeuralHidden:   []int{128, 64},
+		NeuralEpochs:   100,
+		IVDim:          128,
+		IVComponents:   64,
 	}
 }
 
@@ -105,10 +151,24 @@ func NewEngine(cfg EngineConfig) *Engine {
 	if cfg.FeatureDim <= 0 {
 		cfg.FeatureDim = 39
 	}
+	if len(cfg.NeuralHidden) == 0 {
+		cfg.NeuralHidden = []int{128, 64}
+	}
+	if cfg.NeuralEpochs <= 0 {
+		cfg.NeuralEpochs = 100
+	}
+	if cfg.IVDim <= 0 {
+		cfg.IVDim = 128
+	}
+	if cfg.IVComponents <= 0 {
+		cfg.IVComponents = 64
+	}
 	return &Engine{
-		speakers: make(map[string]*SpeakerModel),
-		dim:      cfg.FeatureDim,
-		cfg:      cfg,
+		speakers:   make(map[string]*SpeakerModel),
+		nnEnrolled: make(map[string][]float64),
+		ivEnrolled: make(map[string][]float64),
+		dim:        cfg.FeatureDim,
+		cfg:        cfg,
 	}
 }
 
@@ -143,6 +203,12 @@ func (e *Engine) EnrollSpeaker(id, name string, audioPaths []string) error {
 	}
 
 	e.speakers[id] = model
+
+	// Train neural network and i-vector if enabled (needs >= 2 speakers)
+	if len(e.speakers) >= 2 {
+		e.trainAdvanced()
+	}
+
 	return nil
 }
 
@@ -211,6 +277,11 @@ func (e *Engine) IdentifyFromFeatures(features [][]float64) *MatchResult {
 func (e *Engine) identifyFromFeatures(features [][]float64) *MatchResult {
 	if len(e.speakers) == 0 {
 		return &MatchResult{Identified: false}
+	}
+
+	// Use advanced scoring (neural + i-vector) if available
+	if (e.nn != nil && len(e.nnEnrolled) > 0) || (e.ivModel != nil && len(e.ivEnrolled) > 0) {
+		return e.identifyAdvanced(features)
 	}
 
 	matches := make([]SpeakerMatch, 0, len(e.speakers))
@@ -384,8 +455,55 @@ func (e *Engine) extractFeatures(path string) ([][]float64, error) {
 }
 
 func (e *Engine) extractFeaturesFromSamples(samples []float64, sampleRate int) [][]float64 {
+	// Optional: Voice Activity Detection
+	if e.cfg.UseVAD && len(samples) > 0 {
+		voiced := dsp.VAD(samples, sampleRate)
+		if len(voiced) > 0 {
+			// Keep only voiced segments
+			var filtered []float64
+			frameLen := int(25.0 * float64(sampleRate) / 1000.0)
+			frameShift := int(10.0 * float64(sampleRate) / 1000.0)
+			for i, v := range voiced {
+				if v {
+					start := i * frameShift
+					end := start + frameLen
+					if end > len(samples) {
+						end = len(samples)
+					}
+					filtered = append(filtered, samples[start:end]...)
+				}
+			}
+			if len(filtered) > frameLen {
+				samples = filtered
+			}
+		}
+	}
+
 	// Extract MFCC with deltas
 	result := dsp.ExtractMFCCFromRaw(samples, sampleRate)
+
+	// Optional: RASTA filtering on log-spectra
+	if e.cfg.UseRASTA && len(result.Coefficients) > 4 {
+		for i := range result.Coefficients {
+			// Apply RASTA to each coefficient across frames
+			if i >= 4 {
+				logSpec := make([]float64, len(result.Coefficients))
+				for t := range result.Coefficients {
+					if i < len(result.Coefficients[t]) {
+						logSpec[t] = result.Coefficients[t][i]
+					}
+				}
+				rasta := dsp.RASTAFilter([][]float64{logSpec})
+				if len(rasta) > 0 && len(rasta[0]) > 0 {
+					for t := range result.Coefficients {
+						if i < len(result.Coefficients[t]) {
+							result.Coefficients[t][i] = rasta[0][t]
+						}
+					}
+				}
+			}
+		}
+	}
 
 	// Concatenate MFCC + deltas + delta-deltas
 	features := dsp.ConcatenateFeatures(result)
@@ -465,4 +583,142 @@ func meanVector(features [][]float64) []float64 {
 		mean[i] /= n
 	}
 	return mean
+}
+
+// --- Advanced: Neural + i-vector training ---
+
+// trainAdvanced trains neural network and i-vector models on all enrolled speakers.
+func (e *Engine) trainAdvanced() {
+	// Collect all features by speaker
+	speakerFeats := make(map[string][][]float64)
+	for id, model := range e.speakers {
+		if len(model.Features) > 0 {
+			speakerFeats[id] = model.Features
+		}
+	}
+
+	// Train neural network
+	if e.cfg.UseNeural && len(speakerFeats) >= 2 {
+		featDim := e.dim
+		if len(e.speakers) > 0 {
+			for _, m := range e.speakers {
+				if len(m.Features) > 0 && len(m.Features[0]) > 0 {
+					featDim = len(m.Features[0])
+					break
+				}
+			}
+		}
+
+		e.nn = neural.New(featDim, e.cfg.NeuralHidden, 64, neural.ActLeakyReLU)
+
+		// Train with contrastive loss
+		trainCfg := neural.DefaultTrainConfig()
+		trainCfg.Epochs = e.cfg.NeuralEpochs
+		e.nn.Train(speakerFeats, trainCfg)
+
+		// Compute enrolled embeddings
+		e.nnEnrolled = make(map[string][]float64)
+		for id, feats := range speakerFeats {
+			e.nnEnrolled[id] = e.nn.Embed(feats)
+		}
+	}
+
+	// Train i-vector + PLDA
+	if e.cfg.UseIVector && len(speakerFeats) >= 2 {
+		// Flatten all features for UBM training
+		var allFeats [][]float64
+		for _, feats := range speakerFeats {
+			allFeats = append(allFeats, feats...)
+		}
+
+		e.ivModel = ivector.NewIVectorModel(e.cfg.IVDim)
+		e.ivModel.FitUBM(allFeats, e.cfg.IVComponents)
+		e.ivModel.FitT(allFeats)
+
+		// Extract i-vectors for each speaker
+		ivBySpeaker := make(map[string][][]float64)
+		e.ivEnrolled = make(map[string][]float64)
+		for id, feats := range speakerFeats {
+			iv := e.ivModel.ExtractIVectorFromSequence(feats)
+			e.ivEnrolled[id] = iv
+			ivBySpeaker[id] = [][]float64{iv}
+		}
+
+		// Train PLDA
+		e.plda = ivector.NewPLDAModel(64)
+		e.plda.Fit(ivBySpeaker)
+	}
+}
+
+// identifyAdvanced scores using neural + i-vector, returns best match.
+func (e *Engine) identifyAdvanced(features [][]float64) *MatchResult {
+	scores := make(map[string]float64)
+
+	// Neural network scoring
+	if e.nn != nil && len(e.nnEnrolled) > 0 {
+		queryEmb := e.nn.Embed(features)
+		for id, enrolledEmb := range e.nnEnrolled {
+			sim := cosineSim(queryEmb, enrolledEmb)
+			scores[id] += sim * 0.6 // weight
+		}
+	}
+
+	// i-vector + PLDA scoring
+	if e.ivModel != nil && e.plda != nil && len(e.ivEnrolled) > 0 {
+		queryIV := e.ivModel.ExtractIVectorFromSequence(features)
+		for id, enrolledIV := range e.ivEnrolled {
+			pldaScore := e.plda.Score(queryIV, enrolledIV)
+			// Normalize PLDA score to [0, 1]
+			normScore := pldaScore / (1.0 + math.Abs(pldaScore))
+			scores[id] += normScore * 0.4 // weight
+		}
+	}
+
+	if len(scores) == 0 {
+		return &MatchResult{Identified: false}
+	}
+
+	// Build sorted matches
+	matches := make([]SpeakerMatch, 0, len(scores))
+	for id, score := range scores {
+		name := id
+		if m, ok := e.speakers[id]; ok {
+			name = m.Name
+		}
+		matches = append(matches, SpeakerMatch{
+			SpeakerID:   id,
+			SpeakerName: name,
+			Score:       score,
+		})
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].Score > matches[j].Score
+	})
+
+	result := &MatchResult{AllMatches: matches}
+	if len(matches) > 0 && matches[0].Score >= e.cfg.MatchThreshold {
+		result.Identified = true
+		result.SpeakerID = matches[0].SpeakerID
+		result.SpeakerName = matches[0].SpeakerName
+		result.Score = matches[0].Score
+	}
+
+	return result
+}
+
+func cosineSim(a, b []float64) float64 {
+	if len(a) != len(b) || len(a) == 0 {
+		return 0
+	}
+	var dot, normA, normB float64
+	for i := range a {
+		dot += a[i] * b[i]
+		normA += a[i] * a[i]
+		normB += b[i] * b[i]
+	}
+	denom := math.Sqrt(normA) * math.Sqrt(normB)
+	if denom < 1e-10 {
+		return 0
+	}
+	return dot / denom
 }

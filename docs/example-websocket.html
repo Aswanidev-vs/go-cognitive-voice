@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebSocket Example — GCV</title>
+<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+  :root{--bg:#0a0a0a;--surface:#111;--border:#1e1e1e;--text:#e0e0e0;--text-dim:#666;--text-muted:#444;--accent-warm:#c8a96e;--mono:'JetBrains Mono',monospace;--sans:'IBM Plex Sans',system-ui,sans-serif}
+  body{font-family:var(--sans);background:var(--bg);color:var(--text);font-size:15px;line-height:1.7;-webkit-font-smoothing:antialiased}
+  .topbar{padding:20px 48px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px}
+  .topbar a{font-family:var(--mono);font-size:13px;color:var(--text-dim);text-decoration:none}
+  .topbar a:hover{color:var(--text)}
+  .topbar .sep{color:var(--text-muted)}
+  .content{max-width:780px;padding:48px}
+  h1{font-family:var(--mono);font-size:28px;font-weight:600;margin-bottom:8px}
+  .subtitle{color:var(--text-dim);margin-bottom:32px}
+  h2{font-family:var(--mono);font-size:14px;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin:32px 0 12px}
+  p{color:var(--text-dim);margin-bottom:16px;max-width:640px}
+  pre{background:var(--surface);border:1px solid var(--border);padding:24px;overflow-x:auto;font-family:var(--mono);font-size:13px;line-height:1.65;margin:16px 0}
+  code{font-family:var(--mono);font-size:13px}
+  :not(pre)>code{background:var(--surface);border:1px solid var(--border);padding:2px 6px;font-size:12px;color:var(--accent-warm)}
+  .kw{color:#c8a96e}.fn{color:#e0e0e0}.str{color:#7a9e7e}.cm{color:#444;font-style:italic}.num{color:#b08d6e}
+  .callout{border-left:2px solid var(--border);padding:16px 20px;margin:16px 0}
+  .callout p{margin:0;font-size:14px}
+  .callout strong{color:var(--text)}
+  table{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px}
+  td{padding:8px 12px 8px 0;border-bottom:1px solid var(--border);color:var(--text-dim);vertical-align:top}
+  td:first-child{color:var(--text);font-family:var(--mono);font-size:13px;white-space:nowrap}
+  .nav-btns{display:flex;gap:12px;margin-top:40px;padding-top:24px;border-top:1px solid var(--border)}
+  .nav-btns a{font-family:var(--mono);font-size:13px;color:var(--text-dim);text-decoration:none;padding:8px 16px;border:1px solid var(--border);transition:all 0.15s}
+  .nav-btns a:hover{color:var(--text);border-color:var(--text-dim)}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <a href="index.html">GCV</a><span class="sep">/</span>
+  <a href="examples.html">Examples</a><span class="sep">/</span>
+  <span style="font-family:var(--mono);font-size:13px;color:var(--text)">WebSocket</span>
+</div>
+<div class="content">
+  <h1>WebSocket Speaker ID Server</h1>
+  <p class="subtitle">Build a real-time speaker identification API. Accept audio over WebSocket, return speaker identity.</p>
+
+  <h2>The Code</h2>
+<pre><code><span class="kw">package</span> main
+
+<span class="kw">import</span> (
+    <span class="str">"encoding/binary"</span>
+    <span class="str">"fmt"</span>
+    <span class="str">"net/http"</span>
+    <span class="str">"github.com/Aswanidev-vs/go-cognitive-voice/pkg/gcv"</span>
+)
+
+<span class="kw">func</span> <span class="fn">main</span>() {
+    <span class="cm">// Create engine</span>
+    cfg := gcv.<span class="fn">DefaultConfig</span>()
+    cfg.MatchThreshold = <span class="num">0.7</span>
+    engine := gcv.<span class="fn">NewEngine</span>(cfg)
+
+    <span class="cm">// Load existing speakers</span>
+    engine.<span class="fn">LoadDatabase</span>(<span class="str">"./speaker_db"</span>)
+
+    <span class="cm">// Enroll speakers via POST /enroll</span>
+    http.<span class="fn">HandleFunc</span>(<span class="str">"/enroll"</span>, <span class="kw">func</span>(w http.ResponseWriter, r *http.Request) {
+        <span class="cm">// Parse multipart form: id, name, audio files</span>
+        r.<span class="fn">ParseMultipartForm</span>(<span class="num">32</span> << <span class="num">20</span>)
+        id := r.FormValue(<span class="str">"id"</span>)
+        name := r.FormValue(<span class="str">"name"</span>)
+
+        <span class="cm">// Save uploaded files temporarily, enroll, then delete</span>
+        <span class="cm">// ... (file handling omitted for brevity)</span>
+
+        fmt.<span class="fn">Fprintf</span>(w, <span class="str">"Enrolled %s\n"</span>, name)
+    })
+
+    <span class="cm">// Identify via POST /identify (multipart: audio file)</span>
+    http.<span class="fn">HandleFunc</span>(<span class="str">"/identify"</span>, <span class="kw">func</span>(w http.ResponseWriter, r *http.Request) {
+        <span class="cm">// Read uploaded audio file</span>
+        file, _, _ := r.FormFile(<span class="str">"audio"</span>)
+        <span class="kw">defer</span> file.Close()
+
+        <span class="cm">// Decode to samples (simplified)</span>
+        samples := <span class="fn">decodeAudio</span>(file)
+
+        <span class="cm">// Identify</span>
+        result, _ := engine.<span class="fn">IdentifyFromSamples</span>(samples, <span class="num">16000</span>)
+
+        <span class="cm">// Return JSON</span>
+        fmt.<span class="fn">.Fprintf</span>(w, <span class="str">`{"speaker":"%s","score":%.4f,"identified":%v}`</span>,
+            result.SpeakerName, result.Score, result.Identified)
+    })
+
+    <span class="cm">// Streaming: POST /stream (chunked transfer encoding)</span>
+    http.<span class="fn">HandleFunc</span>(<span class="str">"/stream"</span>, <span class="kw">func</span>(w http.ResponseWriter, r *http.Request) {
+        buf := engine.<span class="fn">NewStreamBuffer</span>(<span class="num">16000</span>, <span class="num">1.0</span>)
+
+        <span class="cm">// Read chunks from request body</span>
+        chunk := <span class="fn">make</span>([]<span class="kw">byte</span>, <span class="num">8000</span>)
+        <span class="kw">for</span> {
+            n, err := r.Body.<span class="fn">Read</span>(chunk)
+            <span class="kw">if</span> n > <span class="num">0</span> {
+                <span class="cm">// Convert bytes to float64 samples</span>
+                samples := <span class="fn">bytesToFloat64</span>(chunk[:n])
+                buf.<span class="fn">Write</span>(samples)
+
+                <span class="kw">if</span> result, ok := buf.<span class="fn">Identify</span>(); ok {
+                    fmt.<span class="fn">Fprintf</span>(w, <span class="str">"%s (%.1f%%)\n"</span>,
+                        result.SpeakerName, result.Score*<span class="num">100</span>)
+                }
+            }
+            <span class="kw">if</span> err != <span class="kw">nil</span> { <span class="kw">break</span> }
+        }
+    })
+
+    fmt.<span class="fn">Println</span>(<span class="str">"Server on :8080"</span>)
+    http.<span class="fn">ListenAndServe</span>(<span class="str">":8080"</span>, <span class="kw">nil</span>)
+}</code></pre>
+
+  <h2>API Endpoints</h2>
+  <table>
+    <tr><td>POST /enroll</td><td>Register a speaker. Multipart form: id, name, audio files.</td></tr>
+    <tr><td>POST /identify</td><td>Identify speaker from audio. Returns JSON with speaker, score, identified.</td></tr>
+    <tr><td>POST /stream</td><td>Streaming identification. Send audio chunks, get results as they arrive.</td></tr>
+  </table>
+
+  <h2>Client Usage</h2>
+<pre><code><span class="cm"># Enroll a speaker</span>
+curl -X POST http://localhost:8080/enroll \
+  -F "id=alice" \
+  -F "name=Alice" \
+  -F "audio=@alice.wav"
+
+<span class="cm"># Identify</span>
+curl -X POST http://localhost:8080/identify \
+  -F "audio=@mystery.wav"
+<span class="cm"># → {"speaker":"Alice","score":0.8806,"identified":true}</span>
+
+<span class="cm"># Stream (send raw PCM chunks)</span>
+cat audio.pcm | curl -X POST http://localhost:8080/stream \
+  --data-binary @-
+<span class="cm"># → Alice (88.1%)</span></code></pre>
+
+  <h2>Deployment</h2>
+  <div class="callout">
+    <p><strong>Production tips:</strong> Use gorilla/websocket for proper WebSocket support. Add authentication. Use a reverse proxy (nginx) for TLS. Store the speaker database on a persistent volume.</p>
+  </div>
+
+  <div class="nav-btns">
+    <a href="example-neural.html">← Neural</a>
+    <a href="examples.html">All Examples</a>
+  </div>
+</div>
+</body>
+</html>
