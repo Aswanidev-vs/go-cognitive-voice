@@ -267,14 +267,13 @@ go-cognitive-voice/
 
 ## Dependencies
 
-Only 2 external packages:
+Only 1 external package:
 
 | Package | Purpose | CGo? |
 |---------|---------|------|
-| [`gopxl/beep`](https://github.com/gopxl/beep) | Audio decoding | No |
-| [`gonum`](https://gonum.org) | FFT, matrix math | No |
+| [`gopxl/beep`](https://github.com/gopxl/beep) | Audio decoding (WAV + MP3) | No |
 
-Everything else — FFT, mel filter banks, MFCC, DTW, GMM, neural networks, i-vectors, PLDA, RASTA, PLP, pitch detection, VAD — is implemented from scratch.
+Everything else — FFT, mel filter banks, MFCC, DTW, GMM, neural networks, i-vectors, PLDA, RASTA, PLP, pitch detection, VAD, matrix math — is implemented from scratch.
 
 ## Advanced Features
 
@@ -326,28 +325,27 @@ You never call `Train()` — it's all automatic.
 |---|---|---|---|---|
 | **Language** | Go | Python | Python | Python |
 | **Algorithm** | MFCC/GMM + neural + i-vector | ECAPA-TDNN (neural) | d-vector (neural) | PyanNet (neural) |
-| **Accuracy** | ~85-93% | ~95-98% | ~90-95% | ~93-97% |
-| **Dependencies** | 2 (beep, gonum) | PyTorch + 10+ pkgs | PyTorch + 5+ pkgs | PyTorch + 8+ pkgs |
-| **Install size** | ~10 MB | ~2 GB+ | ~2 GB+ | ~2 GB+ |
+| **Dependencies** | 1 (beep) | PyTorch + 10+ pkgs | PyTorch + 5+ pkgs | PyTorch + 8+ pkgs |
+| **Install size** | ~2 MB | ~2 GB+ | ~2 GB+ | ~2 GB+ |
 | **CGo required** | No | N/A | N/A | N/A |
 | **Streaming** | Yes | Yes | No | Yes |
 | **License** | MIT | Apache 2.0 | MIT | MIT |
 | **Diarization** | No | Yes | No | Yes |
 | **Pre-trained models** | None (trains from scratch) | Required | Required | Required |
+| **Training data needed** | Your enrollment audio | Pre-trained on VoxCeleb | Pre-trained on VoxCeleb | Pre-trained on VoxCeleb |
 
 **When to use GCV:**
 - You need speaker ID in a Go service (no Python runtime)
 - You want minimal dependencies and fast startup
-- You're okay with ~80-90% accuracy on clean audio
 - You need a lightweight embedded solution
+- You want to train on your own data without pre-trained models
 
 **When to use Python alternatives:**
-- You need maximum accuracy (>95%)
 - You need speaker diarization (who spoke when)
 - You're building an ML research pipeline
 - Python runtime is acceptable
 
-**The accuracy gap** exists because Python libraries use pre-trained neural networks (trained on 1M+ utterances from VoxCeleb) while GCV trains from scratch on your enrollment data. With enough enrollment samples (5-10 per speaker), GCV's neural + i-vector approach gets close to Python accuracy. The gap narrows further with RASTA and VAD for noise handling.
+**Key difference:** Python libraries use pre-trained neural networks (trained on 1M+ utterances from VoxCeleb). GCV trains from scratch on your enrollment data — no downloads, no model files, no PyTorch.
 
 ## Testing
 

@@ -1,6 +1,6 @@
 // Package neural implements a small feedforward neural network trained from
 // scratch on enrollment data for speaker embedding extraction. No pre-trained
-// models, no external ML frameworks — just gonum and backpropagation.
+// models, no external ML frameworks — just math and backpropagation.
 package neural
 
 import (

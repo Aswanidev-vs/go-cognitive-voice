@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Neural + i-vector Example — GCV</title>
-<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
   *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
@@ -42,7 +42,7 @@
 </div>
 <div class="content">
   <h1>Neural Network + i-vector</h1>
-  <p class="subtitle">Enable the custom neural network and PLDA scoring for ~85-93% accuracy. Trains from scratch — no pre-trained models.</p>
+  <p class="subtitle">Enable the custom neural network and PLDA scoring. Trains from scratch — no pre-trained models.</p>
 
   <h2>The Code</h2>
 <pre><code><span class="kw">package</span> main
@@ -97,18 +97,18 @@
 
   <h2>When to Enable What</h2>
   <table>
-    <tr><td>UseNeural</td><td>Enable when you have 2+ speakers with 2+ audio files each. Improves accuracy from ~80% to ~85-90%.</td></tr>
-    <tr><td>UseIVector</td><td>Enable for best accuracy. Adds ~85-93% when combined with neural. Slower training.</td></tr>
+    <tr><td>UseNeural</td><td>Enable when you have 2+ speakers with 2+ audio files each. Learns discriminative embeddings from your data.</td></tr>
+    <tr><td>UseIVector</td><td>Enable for statistical scoring. Combines with neural for best results. Slower training.</td></tr>
     <tr><td>UseRASTA</td><td>Enable for noisy environments. Removes channel variation and fast noise.</td></tr>
     <tr><td>UseVAD</td><td>Enable when audio has silence or background noise. Filters out non-speech frames.</td></tr>
   </table>
 
-  <h2>Accuracy Comparison</h2>
+  <h2>Method Comparison</h2>
   <table>
-    <tr><td>Default (centroid)</td><td>~80-85%</td><td>Fast, no training</td></tr>
-    <tr><td>+ Neural</td><td>~85-90%</td><td>Auto-trains on enrollment</td></tr>
-    <tr><td>+ Neural + i-vector</td><td>~85-93%</td><td>Best accuracy, slower</td></tr>
-    <tr><td>+ RASTA + VAD</td><td>+2-5% in noise</td><td>Robust to real-world audio</td></tr>
+    <tr><td>Default (centroid)</td><td>Fast, no training needed</td></tr>
+    <tr><td>+ Neural</td><td>Learns discriminative features, auto-trains on enrollment</td></tr>
+    <tr><td>+ Neural + i-vector</td><td>Statistical scoring, best combination, slower training</td></tr>
+    <tr><td>+ RASTA + VAD</td><td>Robust to noise and channel variation</td></tr>
   </table>
 
   <div class="callout">

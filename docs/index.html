@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>GCV — Pure Go Speaker Identification</title>
-<link rel="icon" type="image/svg+xml" href="../logo.svg">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
@@ -479,7 +479,7 @@
 <!-- ── SIDEBAR ── -->
 <nav class="sidebar">
   <div class="sidebar-logo">
-    <img src="../logo.svg" alt="GCV">
+    <img src="logo.svg" alt="GCV">
     <h1>GCV</h1>
     <div class="version">v0.1.0</div>
   </div>
@@ -531,10 +531,9 @@
     <div class="section-title">01</div>
     <h3>Installation</h3>
 <pre><code><span class="kw">go</span> get github.com/Aswanidev-vs/go-cognitive-voice</code></pre>
-    <p>Two dependencies, both pure Go:</p>
+    <p>One dependency, pure Go:</p>
     <table>
       <tr><td>gopxl/beep</td><td>Audio decoding (WAV + MP3)</td></tr>
-      <tr><td>gonum</td><td>FFT, matrix math</td></tr>
     </table>
   </div>
 
@@ -592,7 +591,7 @@
       </a>
       <a href="example-neural.html" class="api-card" style="text-decoration:none;color:inherit">
         <code>Neural + i-vector</code>
-        <div class="api-desc">Custom neural network and PLDA scoring for ~85-93% accuracy.</div>
+        <div class="api-desc">Custom neural network and PLDA scoring. Trains from scratch.</div>
       </a>
       <a href="example-websocket.html" class="api-card" style="text-decoration:none;color:inherit">
         <code>WebSocket server</code>
@@ -910,21 +909,21 @@ result, _ := engine.<span class="fn">Identify</span>(<span class="str">"mystery.
   <div class="section" id="comparison">
     <div class="section-title">17</div>
     <h3>vs Python Alternatives</h3>
-    <p>Honest comparison with popular Python speaker identification libraries.</p>
+    <p>Comparison with popular Python speaker identification libraries.</p>
     <table>
       <tr><th></th><th>GCV (this)</th><th>speechbrain</th><th>resemblyzer</th><th>pyannote</th></tr>
       <tr><td>Language</td><td>Go</td><td>Python</td><td>Python</td><td>Python</td></tr>
       <tr><td>Algorithm</td><td>MFCC/GMM + neural + i-vector</td><td>ECAPA-TDNN (neural)</td><td>d-vector (neural)</td><td>PyanNet (neural)</td></tr>
-      <tr><td>Accuracy</td><td>~85-93%</td><td>~95-98%</td><td>~90-95%</td><td>~93-97%</td></tr>
-      <tr><td>Dependencies</td><td>2 packages</td><td>PyTorch + 10+</td><td>PyTorch + 5+</td><td>PyTorch + 8+</td></tr>
-      <tr><td>Install size</td><td>~10 MB</td><td>~2 GB+</td><td>~2 GB+</td><td>~2 GB+</td></tr>
+      <tr><td>Dependencies</td><td>1 package (beep)</td><td>PyTorch + 10+</td><td>PyTorch + 5+</td><td>PyTorch + 8+</td></tr>
+      <tr><td>Install size</td><td>~2 MB</td><td>~2 GB+</td><td>~2 GB+</td><td>~2 GB+</td></tr>
       <tr><td>Streaming</td><td>Yes</td><td>Yes</td><td>No</td><td>Yes</td></tr>
       <tr><td>Pre-trained models</td><td>None (trains from scratch)</td><td>Required</td><td>Required</td><td>Required</td></tr>
+      <tr><td>Training data</td><td>Your enrollment audio</td><td>Pre-trained on VoxCeleb</td><td>Pre-trained on VoxCeleb</td><td>Pre-trained on VoxCeleb</td></tr>
     </table>
     <p><strong>When to use GCV:</strong> Go service, minimal deps, no Python runtime, trains from your own data.</p>
-    <p><strong>When to use Python:</strong> Max accuracy needed, diarization, ML research.</p>
+    <p><strong>When to use Python:</strong> Diarization, ML research, Python runtime acceptable.</p>
     <div class="callout">
-      <p><strong>The accuracy gap</strong> narrows with more enrollment data. Python libraries use pre-trained models on 1M+ utterances. GCV trains from scratch — with 5-10 samples per speaker, the neural + i-vector approach reaches ~85-93%.</p>
+      <p><strong>Key difference:</strong> Python libraries use pre-trained neural networks (trained on 1M+ utterances from VoxCeleb). GCV trains from scratch on your enrollment data — no downloads, no model files, no PyTorch.</p>
     </div>
   </div>
 
