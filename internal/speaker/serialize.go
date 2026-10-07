@@ -20,12 +20,12 @@ type modelData struct {
 }
 
 type gmmData struct {
-	Weights []float64   `json:"weights"`
-	Means   [][]float64 `json:"means"`
+	Weights []float64     `json:"weights"`
+	Means   [][]float64   `json:"means"`
 	Covars  [][][]float64 `json:"covars"`
-	InvCovs [][]float64 `json:"inv_covs"`
-	K       int         `json:"k"`
-	Dim     int         `json:"dim"`
+	InvCovs [][]float64   `json:"inv_covs"`
+	K       int           `json:"k"`
+	Dim     int           `json:"dim"`
 }
 
 func saveModel(model *SpeakerModel, path string) error {

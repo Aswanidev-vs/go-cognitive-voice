@@ -78,8 +78,8 @@ Audio (.wav/.mp3)
 └────────┬────────┘
          ▼
 ┌─────────────────┐
-│  DCT → MFCC      │  13 coefficients + deltas
-│  (39 features)   │  = voice fingerprint
+│  DCT → MFCC      │  13 coeffs + energy + deltas
+│  (42 features)   │  = voice fingerprint
 └────────┬────────┘
          ▼
 ┌─────────────────┐

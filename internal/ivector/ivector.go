@@ -9,18 +9,18 @@ import (
 
 // IVectorModel holds the trained i-vector extraction model.
 type IVectorModel struct {
-	UBM      *GMMModel       // Universal Background Model
-	T        [][]float64     // Total variability matrix [dim][nComponents]
-	mean     []float64       // UBM mean (for centering)
-	nIVDim   int             // i-vector dimension
-	dim      int             // feature dimension
+	UBM    *GMMModel   // Universal Background Model
+	T      [][]float64 // Total variability matrix [dim][nComponents]
+	mean   []float64   // UBM mean (for centering)
+	nIVDim int         // i-vector dimension
+	dim    int         // feature dimension
 }
 
 // PLDAModel holds the PLDA scoring model.
 type PLDAModel struct {
-	Mu       []float64     // Global mean
-	F        [][]float64   // Between-class factor [dim][nFactors]
-	G        []float64     // Within-class covariance (diagonal)
+	Mu       []float64   // Global mean
+	F        [][]float64 // Between-class factor [dim][nFactors]
+	G        []float64   // Within-class covariance (diagonal)
 	nFactors int
 	dim      int
 }

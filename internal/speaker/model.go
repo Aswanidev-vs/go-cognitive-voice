@@ -37,6 +37,9 @@ func NewSpeakerModel(id, name string, dim int) *SpeakerModel {
 // TrainCentroid trains a centroid-based speaker model.
 // This is the simplest approach: compute the mean feature vector.
 func (m *SpeakerModel) TrainCentroid(features [][]float64) {
+	if len(features) > 0 && len(features[0]) > 0 {
+		m.Dim = len(features[0])
+	}
 	m.Centroid = matcher.MeanVector(features)
 	m.Covariance = matcher.CovarianceMatrix(features)
 	m.Features = features
@@ -52,6 +55,9 @@ func (m *SpeakerModel) TrainCentroid(features [][]float64) {
 
 // TrainDTW trains a DTW-based model (stores all enrollment features).
 func (m *SpeakerModel) TrainDTW(features [][]float64) {
+	if len(features) > 0 && len(features[0]) > 0 {
+		m.Dim = len(features[0])
+	}
 	m.Features = features
 	m.NumSamples = len(features)
 	m.TrainMethod = "dtw"
@@ -64,6 +70,12 @@ func (m *SpeakerModel) TrainDTW(features [][]float64) {
 
 // TrainGMM trains a Gaussian Mixture Model for the speaker.
 func (m *SpeakerModel) TrainGMM(features [][]float64, k int, maxIter int, tol float64) {
+	// Derive the dimension from the data: the configured feature dimension is
+	// only a fallback and can differ from what extraction actually produces
+	// (e.g. 39 configured vs 42 actual = (13 MFCC + energy) * 3 deltas).
+	if len(features) > 0 && len(features[0]) > 0 {
+		m.Dim = len(features[0])
+	}
 	if k <= 0 {
 		k = min(8, len(features)/5)
 		if k < 2 {
@@ -201,23 +213,40 @@ func fitGMM(data [][]float64, k, dim, maxIter int, tol float64) *GMM {
 	}
 
 	for iter := 0; iter < maxIter; iter++ {
-		// E-step: compute responsibilities
+		// Sample-independent quantities, valid until the next M-step
+		invCovs, logDets := prepareGMM(gmm)
+		oldLogLik := gmmLogLikelihoodPrepared(gmm, data, invCovs, logDets)
+
+		// E-step: responsibilities in the log domain (avoids underflow that
+		// would silently drop far-away samples)
 		for i := 0; i < n; i++ {
+			maxLog := math.Inf(-1)
+			for j := 0; j < k; j++ {
+				gamma[i][j] = math.Log(gmm.Weights[j]) +
+					gaussianLogPDFPrepared(data[i], gmm.Means[j], invCovs[j], logDets[j])
+				if gamma[i][j] > maxLog {
+					maxLog = gamma[i][j]
+				}
+			}
+			if math.IsInf(maxLog, -1) {
+				for j := range gamma[i] {
+					gamma[i][j] = 0
+				}
+				continue
+			}
 			total := 0.0
 			for j := 0; j < k; j++ {
-				gamma[i][j] = gmm.Weights[j] * gaussianPDF(data[i], gmm.Means[j], gmm.Covars[j])
+				gamma[i][j] = math.Exp(gamma[i][j] - maxLog)
 				total += gamma[i][j]
 			}
 			if total > 0 {
-				for j := 0; j < k; j++ {
+				for j := range gamma[i] {
 					gamma[i][j] /= total
 				}
 			}
 		}
 
 		// M-step: update parameters
-		oldLogLik := gmmLogLikelihoodAll(gmm, data)
-
 		for j := 0; j < k; j++ {
 			// Effective number of samples for component j
 			Nj := 0.0
@@ -256,15 +285,27 @@ func fitGMM(data [][]float64, k, dim, maxIter int, tol float64) *GMM {
 				}
 			}
 
-			// Add regularization to avoid singular covariance
+			// Regularize to avoid singular covariance, and shrink toward a
+			// scaled identity: components usually have far fewer samples than
+			// dimensions, so the raw estimate is rank-deficient and its
+			// inverse would explode along the null space.
 			regularizeCovariance(gmm.Covars[j], dim, 1e-6)
+			avgVar := 0.0
+			for d := 0; d < dim; d++ {
+				avgVar += gmm.Covars[j][d][d]
+			}
+			avgVar /= float64(dim)
+			for d := 0; d < dim; d++ {
+				gmm.Covars[j][d][d] += avgVar
+			}
 
 			// Compute inverse covariance
 			gmm.InvCovs[j] = invertMatrix(flatMatrix(gmm.Covars[j]), dim)
 		}
 
 		// Check convergence
-		newLogLik := gmmLogLikelihoodAll(gmm, data)
+		invCovs, logDets = prepareGMM(gmm)
+		newLogLik := gmmLogLikelihoodPrepared(gmm, data, invCovs, logDets)
 		if math.Abs(newLogLik-oldLogLik) < tol {
 			break
 		}
@@ -273,23 +314,91 @@ func fitGMM(data [][]float64, k, dim, maxIter int, tol float64) *GMM {
 	return gmm
 }
 
+// gmmLogLikelihood returns log p(x | GMM) computed in the log domain, so
+// densities that would underflow in the linear domain still contribute.
 func gmmLogLikelihood(gmm *GMM, x []float64) float64 {
+	invCovs, logDets := prepareGMM(gmm)
 	logSum := math.Inf(-1)
 	for j := 0; j < gmm.K; j++ {
-		lik := gmm.Weights[j] * gaussianPDF(x, gmm.Means[j], gmm.Covars[j])
-		if lik > 0 {
-			logSum = logAdd(logSum, math.Log(lik))
-		}
+		lik := math.Log(gmm.Weights[j]) +
+			gaussianLogPDFPrepared(x, gmm.Means[j], invCovs[j], logDets[j])
+		logSum = logAdd(logSum, lik)
 	}
 	return logSum
 }
 
-func gmmLogLikelihoodAll(gmm *GMM, data [][]float64) float64 {
+// prepareGMM computes each component's inverse covariance and log-determinant
+// once per EM iteration; both are independent of the sample.
+func prepareGMM(gmm *GMM) ([][]float64, []float64) {
+	invCovs := make([][]float64, gmm.K)
+	logDets := make([]float64, gmm.K)
+	for j := 0; j < gmm.K; j++ {
+		dim := gmm.Dim
+		invCovs[j] = invertMatrix(flatMatrix(gmm.Covars[j]), dim)
+		if invCovs[j] == nil {
+			invCovs[j] = diagonalInverse(gmm.Covars[j], dim)
+		}
+		det := matrixDeterminant(gmm.Covars[j], dim)
+		if det <= 0 {
+			logDets[j] = math.Log(1e-300)
+		} else {
+			logDets[j] = math.Log(det)
+		}
+	}
+	return invCovs, logDets
+}
+
+// gmmLogLikelihoodPrepared sums the log mixture likelihood over all samples
+// using precomputed per-component inverses and log-determinants.
+func gmmLogLikelihoodPrepared(gmm *GMM, data [][]float64, invCovs [][]float64, logDets []float64) float64 {
 	total := 0.0
 	for _, x := range data {
-		total += gmmLogLikelihood(gmm, x)
+		logSum := math.Inf(-1)
+		for j := 0; j < gmm.K; j++ {
+			lik := math.Log(gmm.Weights[j]) +
+				gaussianLogPDFPrepared(x, gmm.Means[j], invCovs[j], logDets[j])
+			logSum = logAdd(logSum, lik)
+		}
+		total += logSum
 	}
 	return total
+}
+
+// gaussianLogPDFPrepared is the log density given the precomputed inverse
+// covariance and log-determinant. Returns -Inf when the dims don't match.
+func gaussianLogPDFPrepared(x, mean, invCov []float64, logDet float64) float64 {
+	dim := len(x)
+	if dim == 0 || len(mean) != dim || len(invCov) != dim*dim {
+		return math.Inf(-1)
+	}
+
+	diff := make([]float64, dim)
+	for i := 0; i < dim; i++ {
+		diff[i] = x[i] - mean[i]
+	}
+
+	quadratic := 0.0
+	for i := 0; i < dim; i++ {
+		tmp := 0.0
+		for j := 0; j < dim; j++ {
+			tmp += invCov[i*dim+j] * diff[j]
+		}
+		quadratic += diff[i] * tmp
+	}
+
+	return -0.5*float64(dim)*math.Log(2*math.Pi) - 0.5*logDet - 0.5*quadratic
+}
+
+func diagonalInverse(covar [][]float64, dim int) []float64 {
+	inv := make([]float64, dim*dim)
+	for i := 0; i < dim; i++ {
+		if covar[i][i] > 1e-20 {
+			inv[i*dim+i] = 1.0 / covar[i][i]
+		} else {
+			inv[i*dim+i] = 1e20
+		}
+	}
+	return inv
 }
 
 func gaussianPDF(x, mean []float64, covar [][]float64) float64 {
@@ -312,14 +421,7 @@ func gaussianPDF(x, mean []float64, covar [][]float64) float64 {
 	invCov := invertMatrix(flatMatrix(covar), dim)
 	if invCov == nil {
 		// Fallback to diagonal covariance
-		invCov = make([]float64, dim*dim)
-		for i := 0; i < dim; i++ {
-			if covar[i][i] > 1e-20 {
-				invCov[i*dim+i] = 1.0 / covar[i][i]
-			} else {
-				invCov[i*dim+i] = 1e20
-			}
-		}
+		invCov = diagonalInverse(covar, dim)
 	}
 
 	quadratic := 0.0
@@ -415,6 +517,9 @@ func flatMatrix(m [][]float64) []float64 {
 }
 
 func matrixDeterminant(m [][]float64, n int) float64 {
+	if n == 0 {
+		return 1
+	}
 	if n == 1 {
 		return m[0][0]
 	}
@@ -422,23 +527,36 @@ func matrixDeterminant(m [][]float64, n int) float64 {
 		return m[0][0]*m[1][1] - m[0][1]*m[1][0]
 	}
 
-	det := 0.0
-	sign := 1.0
+	// Gaussian elimination (LU) — O(n^3). Laplace expansion would be O(n!)
+	// and unusable beyond ~10 dimensions.
+	a := make([][]float64, n)
+	for i := range a {
+		a[i] = append([]float64(nil), m[i]...)
+	}
+
+	det := 1.0
 	for col := 0; col < n; col++ {
-		sub := make([][]float64, n-1)
-		for i := 0; i < n-1; i++ {
-			sub[i] = make([]float64, n-1)
-			for j := 0; j < n-1; j++ {
-				srcRow := i + 1
-				srcCol := j
-				if srcCol >= col {
-					srcCol++
-				}
-				sub[i][j] = m[srcRow][srcCol]
+		// Partial pivoting
+		pivot := col
+		for row := col + 1; row < n; row++ {
+			if math.Abs(a[row][col]) > math.Abs(a[pivot][col]) {
+				pivot = row
 			}
 		}
-		det += sign * m[0][col] * matrixDeterminant(sub, n-1)
-		sign *= -1
+		if math.Abs(a[pivot][col]) < 1e-300 {
+			return 0
+		}
+		if pivot != col {
+			a[col], a[pivot] = a[pivot], a[col]
+			det = -det
+		}
+		det *= a[col][col]
+		for row := col + 1; row < n; row++ {
+			f := a[row][col] / a[col][col]
+			for c := col + 1; c < n; c++ {
+				a[row][c] -= f * a[col][c]
+			}
+		}
 	}
 	return det
 }

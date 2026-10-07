@@ -12,6 +12,7 @@ import (
 	"github.com/Aswanidev-vs/go-cognitive-voice/internal/audio"
 	"github.com/Aswanidev-vs/go-cognitive-voice/internal/dsp"
 	"github.com/Aswanidev-vs/go-cognitive-voice/internal/ivector"
+	"github.com/Aswanidev-vs/go-cognitive-voice/internal/matcher"
 	"github.com/Aswanidev-vs/go-cognitive-voice/internal/neural"
 )
 
@@ -27,8 +28,8 @@ type Engine struct {
 	nnEnrolled map[string][]float64 // speaker ID → embedding
 
 	// i-vector + PLDA
-	ivModel  *ivector.IVectorModel
-	plda     *ivector.PLDAModel
+	ivModel    *ivector.IVectorModel
+	plda       *ivector.PLDAModel
 	ivEnrolled map[string][]float64 // speaker ID → i-vector
 }
 
@@ -41,8 +42,10 @@ type Engine struct {
 //	cfg.MatchThreshold = 0.85  // stricter matching
 //	engine := gcv.NewEngine(cfg)
 type EngineConfig struct {
-	// FeatureDim is the total feature vector size per frame.
-	// Default 39 = 13 MFCC + 13 delta + 13 delta-delta.
+	// FeatureDim is the fallback feature vector size used before any
+	// features have been observed (model metadata, neural input guess).
+	// Actual extraction produces (NumMFCC+1)×3 values per frame
+	// (energy + MFCC, delta, delta-delta) = 42 by default.
 	// Only change this if you know what you're doing.
 	FeatureDim int
 
@@ -55,7 +58,8 @@ type EngineConfig struct {
 	NumFilters int
 
 	// FFTSize is the FFT window size (must be power of 2).
-	// 512 works for 16kHz audio. Use 256 for 8kHz, 1024 for 32kHz+.
+	// 0 = derive from the sample rate via the 25 ms frame (256 @ 8 kHz,
+	// 512 @ 16 kHz, 1024 @ 32 kHz). Only set this to override that.
 	FFTSize int
 
 	// MatchThreshold is the minimum score to accept a match (0.0 to 1.0).
@@ -118,7 +122,6 @@ func DefaultEngineConfig() EngineConfig {
 		FeatureDim:     39,
 		NumMFCC:        13,
 		NumFilters:     26,
-		FFTSize:        512,
 		MatchThreshold: 0.5,
 		TopN:           5,
 		TrainMethod:    "centroid",
@@ -132,11 +135,11 @@ func DefaultEngineConfig() EngineConfig {
 
 // MatchResult holds the result of speaker identification.
 type MatchResult struct {
-	Identified   bool
-	SpeakerID    string
-	SpeakerName  string
-	Score        float64
-	AllMatches   []SpeakerMatch
+	Identified  bool
+	SpeakerID   string
+	SpeakerName string
+	Score       float64
+	AllMatches  []SpeakerMatch
 }
 
 // SpeakerMatch holds a single speaker match.
@@ -229,6 +232,11 @@ func (e *Engine) EnrollSpeakerFromFeatures(id, name string, features [][]float64
 	}
 
 	e.speakers[id] = model
+
+	// Train neural network and i-vector if enabled (needs >= 2 speakers)
+	if len(e.speakers) >= 2 {
+		e.trainAdvanced()
+	}
 }
 
 // Identify identifies the speaker in an audio file.
@@ -292,7 +300,7 @@ func (e *Engine) identifyFromFeatures(features [][]float64) *MatchResult {
 			score = model.ScoreSequence(features)
 		} else {
 			// For centroid/gmm, compare against mean of query features
-			meanFeatures := meanVector(features)
+			meanFeatures := matcher.MeanVector(features)
 			score = model.Score(meanFeatures)
 		}
 
@@ -307,6 +315,9 @@ func (e *Engine) identifyFromFeatures(features [][]float64) *MatchResult {
 	sort.Slice(matches, func(i, j int) bool {
 		return matches[i].Score > matches[j].Score
 	})
+	if e.cfg.TopN > 0 && len(matches) > e.cfg.TopN {
+		matches = matches[:e.cfg.TopN]
+	}
 
 	result := &MatchResult{
 		AllMatches: matches,
@@ -345,7 +356,7 @@ func (e *Engine) Detect(audioPath, speakerID string) (bool, float64, error) {
 	if e.cfg.TrainMethod == "dtw" {
 		score = model.ScoreSequence(features)
 	} else {
-		meanFeatures := meanVector(features)
+		meanFeatures := matcher.MeanVector(features)
 		score = model.Score(meanFeatures)
 	}
 
@@ -370,7 +381,7 @@ func (e *Engine) DetectFromFeatures(features [][]float64, speakerID string) (boo
 	if e.cfg.TrainMethod == "dtw" {
 		score = model.ScoreSequence(features)
 	} else {
-		meanFeatures := meanVector(features)
+		meanFeatures := matcher.MeanVector(features)
 		score = model.Score(meanFeatures)
 	}
 
@@ -396,7 +407,7 @@ func (e *Engine) DetectFromSamples(samples []float64, sampleRate int, speakerID 
 	if e.cfg.TrainMethod == "dtw" {
 		score = model.ScoreSequence(features)
 	} else {
-		meanFeatures := meanVector(features)
+		meanFeatures := matcher.MeanVector(features)
 		score = model.Score(meanFeatures)
 	}
 
@@ -423,9 +434,9 @@ func (e *Engine) ListSpeakers() []SpeakerInfo {
 	list := make([]SpeakerInfo, 0, len(e.speakers))
 	for _, model := range e.speakers {
 		list = append(list, SpeakerInfo{
-			ID:         model.ID,
-			Name:       model.Name,
-			NumSamples: model.NumSamples,
+			ID:          model.ID,
+			Name:        model.Name,
+			NumSamples:  model.NumSamples,
 			TrainMethod: model.TrainMethod,
 		})
 	}
@@ -479,27 +490,30 @@ func (e *Engine) extractFeaturesFromSamples(samples []float64, sampleRate int) [
 		}
 	}
 
-	// Extract MFCC with deltas
-	result := dsp.ExtractMFCCFromRaw(samples, sampleRate)
+	// Extract MFCC with deltas, honoring the configured feature parameters
+	mfccCfg := dsp.DefaultMFCCConfig(sampleRate)
+	if e.cfg.NumMFCC > 0 {
+		mfccCfg.NumMFCC = e.cfg.NumMFCC
+	}
+	if e.cfg.NumFilters > 0 {
+		mfccCfg.NumFilters = e.cfg.NumFilters
+	}
+	if e.cfg.FFTSize > 0 {
+		mfccCfg.FFTSize = e.cfg.FFTSize
+	}
+	result := dsp.ExtractMFCCFromRawConfig(samples, sampleRate, mfccCfg)
 
-	// Optional: RASTA filtering on log-spectra
-	if e.cfg.UseRASTA && len(result.Coefficients) > 4 {
-		for i := range result.Coefficients {
-			// Apply RASTA to each coefficient across frames
-			if i >= 4 {
-				logSpec := make([]float64, len(result.Coefficients))
+	// Optional: RASTA filtering of each cepstral coefficient over time
+	if e.cfg.UseRASTA && len(result.Coefficients) > 0 {
+		numCoeffs := len(result.Coefficients[0])
+		for c := 4; c < numCoeffs; c++ {
+			cepstrum := make([]float64, len(result.Coefficients))
+			for t := range result.Coefficients {
+				cepstrum[t] = result.Coefficients[t][c]
+			}
+			if filtered := dsp.RASTAFilter([][]float64{cepstrum}); len(filtered) > 0 {
 				for t := range result.Coefficients {
-					if i < len(result.Coefficients[t]) {
-						logSpec[t] = result.Coefficients[t][i]
-					}
-				}
-				rasta := dsp.RASTAFilter([][]float64{logSpec})
-				if len(rasta) > 0 && len(rasta[0]) > 0 {
-					for t := range result.Coefficients {
-						if i < len(result.Coefficients[t]) {
-							result.Coefficients[t][i] = rasta[0][t]
-						}
-					}
+					result.Coefficients[t][c] = filtered[0][t]
 				}
 			}
 		}
@@ -520,10 +534,28 @@ func (e *Engine) SaveDatabase(dir string) error {
 		return fmt.Errorf("create db dir: %w", err)
 	}
 
+	keep := make(map[string]bool, len(e.speakers))
 	for _, model := range e.speakers {
+		keep[model.ID+".json"] = true
 		path := filepath.Join(dir, model.ID+".json")
 		if err := saveModel(model, path); err != nil {
 			return fmt.Errorf("save speaker %s: %w", model.ID, err)
+		}
+	}
+
+	// Remove files of speakers that no longer exist, otherwise they would be
+	// resurrected by the next LoadDatabase.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return fmt.Errorf("read db dir: %w", err)
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".json") || keep[name] {
+			continue
+		}
+		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			return fmt.Errorf("remove stale speaker file %s: %w", name, err)
 		}
 	}
 
@@ -557,6 +589,12 @@ func (e *Engine) LoadDatabase(dir string) error {
 		e.speakers[model.ID] = model
 	}
 
+	// Rebuild advanced models so a loaded database scores the same way as a
+	// freshly enrolled one.
+	if len(e.speakers) >= 2 {
+		e.trainAdvanced()
+	}
+
 	return nil
 }
 
@@ -565,24 +603,6 @@ func (e *Engine) GetModel(id string) *SpeakerModel {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	return e.speakers[id]
-}
-
-func meanVector(features [][]float64) []float64 {
-	if len(features) == 0 {
-		return nil
-	}
-	dim := len(features[0])
-	mean := make([]float64, dim)
-	for _, f := range features {
-		for i := 0; i < dim && i < len(f); i++ {
-			mean[i] += f[i]
-		}
-	}
-	n := float64(len(features))
-	for i := range mean {
-		mean[i] /= n
-	}
-	return mean
 }
 
 // --- Advanced: Neural + i-vector training ---
@@ -654,23 +674,37 @@ func (e *Engine) trainAdvanced() {
 func (e *Engine) identifyAdvanced(features [][]float64) *MatchResult {
 	scores := make(map[string]float64)
 
+	hasNN := e.nn != nil && len(e.nnEnrolled) > 0
+	hasIV := e.ivModel != nil && e.plda != nil && len(e.ivEnrolled) > 0
+
+	// Weights sum to 1 so that a single active scorer can still reach the
+	// match threshold on its own.
+	var wNN, wIV float64
+	switch {
+	case hasNN && hasIV:
+		wNN, wIV = 0.6, 0.4
+	case hasNN:
+		wNN = 1.0
+	case hasIV:
+		wIV = 1.0
+	}
+
 	// Neural network scoring
-	if e.nn != nil && len(e.nnEnrolled) > 0 {
+	if hasNN {
 		queryEmb := e.nn.Embed(features)
 		for id, enrolledEmb := range e.nnEnrolled {
-			sim := cosineSim(queryEmb, enrolledEmb)
-			scores[id] += sim * 0.6 // weight
+			scores[id] += matcher.CosineSimilarity(queryEmb, enrolledEmb) * wNN
 		}
 	}
 
 	// i-vector + PLDA scoring
-	if e.ivModel != nil && e.plda != nil && len(e.ivEnrolled) > 0 {
+	if hasIV {
 		queryIV := e.ivModel.ExtractIVectorFromSequence(features)
 		for id, enrolledIV := range e.ivEnrolled {
 			pldaScore := e.plda.Score(queryIV, enrolledIV)
-			// Normalize PLDA score to [0, 1]
+			// Normalize PLDA score to [-1, 1]
 			normScore := pldaScore / (1.0 + math.Abs(pldaScore))
-			scores[id] += normScore * 0.4 // weight
+			scores[id] += normScore * wIV
 		}
 	}
 
@@ -694,6 +728,9 @@ func (e *Engine) identifyAdvanced(features [][]float64) *MatchResult {
 	sort.Slice(matches, func(i, j int) bool {
 		return matches[i].Score > matches[j].Score
 	})
+	if e.cfg.TopN > 0 && len(matches) > e.cfg.TopN {
+		matches = matches[:e.cfg.TopN]
+	}
 
 	result := &MatchResult{AllMatches: matches}
 	if len(matches) > 0 && matches[0].Score >= e.cfg.MatchThreshold {
@@ -704,21 +741,4 @@ func (e *Engine) identifyAdvanced(features [][]float64) *MatchResult {
 	}
 
 	return result
-}
-
-func cosineSim(a, b []float64) float64 {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0
-	}
-	var dot, normA, normB float64
-	for i := range a {
-		dot += a[i] * b[i]
-		normA += a[i] * a[i]
-		normB += b[i] * b[i]
-	}
-	denom := math.Sqrt(normA) * math.Sqrt(normB)
-	if denom < 1e-10 {
-		return 0
-	}
-	return dot / denom
 }

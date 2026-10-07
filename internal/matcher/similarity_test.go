@@ -155,6 +155,17 @@ func TestCovarianceMatrix(t *testing.T) {
 	}
 }
 
+func TestCovarianceMatrix_SingleVector(t *testing.T) {
+	// Sample covariance divides by n-1; a single sample is undefined and
+	// must not produce NaN/Inf entries.
+	if cov := CovarianceMatrix([][]float64{{1, 2, 3}}); cov != nil {
+		t.Errorf("expected nil for a single vector, got %v", cov)
+	}
+	if cov := CovarianceMatrix(nil); cov != nil {
+		t.Errorf("expected nil for no vectors, got %v", cov)
+	}
+}
+
 func TestNormalizeVector(t *testing.T) {
 	v := []float64{3, 4}
 	result := NormalizeVector(v)

@@ -90,9 +90,11 @@ func MeanVector(vectors [][]float64) []float64 {
 }
 
 // CovarianceMatrix computes the covariance matrix of a set of vectors.
+// Returns nil when fewer than 2 vectors are given: the sample covariance
+// divides by n-1 and is undefined for a single sample.
 func CovarianceMatrix(vectors [][]float64) [][]float64 {
 	n := len(vectors)
-	if n == 0 {
+	if n < 2 {
 		return nil
 	}
 	dim := len(vectors[0])

@@ -4,28 +4,27 @@ import "math"
 
 // MFCCConfig holds parameters for MFCC extraction.
 type MFCCConfig struct {
-	NumMFCC     int     // Number of MFCC coefficients (typically 13)
-	NumFilters  int     // Number of mel filters (typically 26)
-	FFTSize     int     // FFT size (power of 2)
-	SampleRate  int     // Audio sample rate
-	LowFreq     float64 // Lowest frequency for mel filter bank
-	HighFreq    float64 // Highest frequency (0 = Nyquist)
-	IncludeEnergy bool  // Whether to include log energy as 0th coefficient
+	NumMFCC       int     // Number of MFCC coefficients (typically 13)
+	NumFilters    int     // Number of mel filters (typically 26)
+	FFTSize       int     // FFT size (power of 2)
+	SampleRate    int     // Audio sample rate
+	LowFreq       float64 // Lowest frequency for mel filter bank
+	HighFreq      float64 // Highest frequency (0 = Nyquist)
+	IncludeEnergy bool    // Whether to include log energy as 0th coefficient
 }
 
 // DefaultMFCCConfig returns sensible defaults for speech processing.
 func DefaultMFCCConfig(sampleRate int) MFCCConfig {
-	fftSize := 512
-	if sampleRate >= 16000 {
-		fftSize = 512
-	}
+	// Match the FFT size to the 25 ms analysis frame so the filter bank
+	// covers the full spectrum: 256 @ 8 kHz, 512 @ 16 kHz, 1024 @ 32 kHz.
+	fftSize := NextPowerOf2(25 * sampleRate / 1000)
 	return MFCCConfig{
-		NumMFCC:      13,
-		NumFilters:   26,
-		FFTSize:      fftSize,
-		SampleRate:   sampleRate,
-		LowFreq:      0,
-		HighFreq:     float64(sampleRate) / 2.0,
+		NumMFCC:       13,
+		NumFilters:    26,
+		FFTSize:       fftSize,
+		SampleRate:    sampleRate,
+		LowFreq:       0,
+		HighFreq:      float64(sampleRate) / 2.0,
 		IncludeEnergy: true,
 	}
 }
@@ -85,16 +84,18 @@ func ExtractMFCC(frames [][]float64, cfg MFCCConfig) MFCCResult {
 
 // ExtractMFCCFromRaw extracts MFCC directly from raw audio samples.
 func ExtractMFCCFromRaw(samples []float64, sampleRate int) MFCCResult {
-	cfg := DefaultMFCCConfig(sampleRate)
+	return ExtractMFCCFromRawConfig(samples, sampleRate, DefaultMFCCConfig(sampleRate))
+}
 
-	// Frame and window
-	frameCfg := FrameConfig{
+// ExtractMFCCFromRawConfig extracts MFCC directly from raw audio samples
+// using the given configuration (SampleRate is set from sampleRate).
+func ExtractMFCCFromRawConfig(samples []float64, sampleRate int, cfg MFCCConfig) MFCCResult {
+	cfg.SampleRate = sampleRate
+	frames := ProcessFrames(samples, sampleRate, FrameConfig{
 		FrameLenMs:   25.0,
 		FrameShiftMs: 10.0,
 		PreEmphCoeff: 0.97,
-	}
-	frames := ProcessFrames(samples, sampleRate, frameCfg)
-
+	})
 	return ExtractMFCC(frames, cfg)
 }
 

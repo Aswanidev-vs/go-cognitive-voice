@@ -686,7 +686,7 @@ engine := gcv.<span class="fn">NewEngine</span>(cfg)</code></pre>
       <tr><td>GMMComponents</td><td>8</td><td>Number of GMM mixture components</td></tr>
       <tr><td>NumMFCC</td><td>13</td><td>MFCC coefficients per frame</td></tr>
       <tr><td>NumFilters</td><td>26</td><td>Mel filter bank size</td></tr>
-      <tr><td>FFTSize</td><td>512</td><td>FFT window (power of 2)</td></tr>
+      <tr><td>FFTSize</td><td>auto</td><td>FFT window (power of 2); 0 derives it from the sample rate (512 @ 16 kHz)</td></tr>
     </table>
     <p>Threshold guide:</p>
     <table>

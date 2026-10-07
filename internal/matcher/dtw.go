@@ -18,9 +18,9 @@ const (
 
 // DTWConfig holds DTW computation parameters.
 type DTWConfig struct {
-	Mode        DTWMode
-	Window      int  // Sakoe-Chiba band width (0 = no constraint)
-	UseLog      bool // Use log-distance instead of Euclidean
+	Mode   DTWMode
+	Window int  // Sakoe-Chiba band width (0 = no constraint)
+	UseLog bool // Use log-distance instead of Euclidean
 }
 
 // DefaultDTWConfig returns default parameters.

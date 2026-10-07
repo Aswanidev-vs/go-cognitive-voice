@@ -122,8 +122,9 @@ type StreamBuffer struct {
 }
 
 // NewStreamBuffer creates a streaming buffer.
-//   sampleRate: audio sample rate (e.g. 16000)
-//   chunkSec: seconds per identification chunk (e.g. 2.0)
+//
+//	sampleRate: audio sample rate (e.g. 16000)
+//	chunkSec: seconds per identification chunk (e.g. 2.0)
 func (e *Engine) NewStreamBuffer(sampleRate int, chunkSec float64) *StreamBuffer {
 	return &StreamBuffer{inner: speaker.NewStreamBuffer(e.inner, sampleRate, chunkSec)}
 }

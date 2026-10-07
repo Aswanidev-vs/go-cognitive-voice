@@ -4,9 +4,9 @@ import "math"
 
 // Framing parameters
 const (
-	DefaultFrameLenMs  = 25.0  // 25ms frames
+	DefaultFrameLenMs   = 25.0 // 25ms frames
 	DefaultFrameShiftMs = 10.0 // 10ms shift (hop)
-	DefaultPreEmph     = 0.97  // pre-emphasis coefficient
+	DefaultPreEmph      = 0.97 // pre-emphasis coefficient
 )
 
 // FrameConfig holds framing parameters.

@@ -17,13 +17,14 @@ func RASTAFilter(logSpectra [][]float64) [][]float64 {
 	nBins := len(logSpectra[0])
 	result := make([][]float64, nFrames)
 
+	// Apply RASTA per bin outside the frame loop
+	coeffs := []float64{-1, 4, -6, 4, -1}
 	for t := 0; t < nFrames; t++ {
 		result[t] = make([]float64, nBins)
 		for f := 0; f < nBins; f++ {
 			val := 0.0
 			// H(z) = z^4 * (-1 + 4z^-1 - 6z^-2 + 4z^-3 - z^-4)
 			// = -x[t] + 4*x[t-1] - 6*x[t-2] + 4*x[t-3] - x[t-4]
-			coeffs := []float64{-1, 4, -6, 4, -1}
 			for k, c := range coeffs {
 				idx := t - k
 				if idx >= 0 && idx < nFrames {
@@ -127,7 +128,7 @@ func barkToHz(bark float64) float64 {
 }
 
 func hzToBark(hz float64) float64 {
-	return 24.0 * math.Log10(1.0+hz/1960.0)/math.Log10(2.0)
+	return 24.0 * math.Log10(1.0+hz/1960.0) / math.Log10(2.0)
 }
 
 // equalLoudness returns the equal-loudness pre-emphasis weight for a frequency.

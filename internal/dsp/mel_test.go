@@ -10,8 +10,8 @@ func TestHzToMel(t *testing.T) {
 		hz, expected float64
 	}{
 		{0, 0},
-		{700, 2595 * math.Log10(2)},   // ~779.76
-		{1000, 2595 * math.Log10(1 + 1000.0/700.0)},
+		{700, 2595 * math.Log10(2)}, // ~779.76
+		{1000, 2595 * math.Log10(1+1000.0/700.0)},
 	}
 
 	for _, tt := range tests {

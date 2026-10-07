@@ -1,6 +1,7 @@
 package speaker
 
 import (
+	"fmt"
 	"math"
 	"os"
 	"path/filepath"
@@ -348,25 +349,6 @@ func TestIdentifyFromFeatures_NaN(t *testing.T) {
 	_ = result
 }
 
-func flattenToMono(features [][]float64) []float64 {
-	// Convert 2D features to 1D by taking mean across features
-	if len(features) == 0 {
-		return nil
-	}
-	dim := len(features[0])
-	result := make([]float64, dim)
-	for _, f := range features {
-		for i := 0; i < dim && i < len(f); i++ {
-			result[i] += f[i]
-		}
-	}
-	n := float64(len(features))
-	for i := range result {
-		result[i] /= n
-	}
-	return result
-}
-
 func TestScoredSpeaker(t *testing.T) {
 	results := []ScoredSpeaker{
 		{"c", 0.3},
@@ -379,5 +361,98 @@ func TestScoredSpeaker(t *testing.T) {
 	}
 	if results[2].SpeakerID != "c" || results[2].Score != 0.3 {
 		t.Errorf("sort failed: %v", results)
+	}
+}
+
+func TestIdentify_TopN(t *testing.T) {
+	cfg := DefaultEngineConfig()
+	cfg.TrainMethod = "centroid"
+	cfg.TopN = 2
+	engine := NewEngine(cfg)
+
+	var firstCenter []float64
+	for i := 0; i < 4; i++ {
+		center := make([]float64, cfg.FeatureDim)
+		for j := range center {
+			center[j] = float64((i+1)*(j%3+1)) + float64(i)*10
+		}
+		if i == 0 {
+			firstCenter = center
+		}
+		id := fmt.Sprintf("spk%d", i)
+		engine.EnrollSpeakerFromFeatures(id, id, generateCluster(center, 10, 0.01))
+	}
+
+	result := engine.IdentifyFromFeatures(generateCluster(firstCenter, 5, 0.01))
+	if len(result.AllMatches) != cfg.TopN {
+		t.Errorf("TopN=%d should cap AllMatches, got %d", cfg.TopN, len(result.AllMatches))
+	}
+	if !result.Identified || result.SpeakerID != "spk0" {
+		t.Errorf("expected spk0, got %q (identified=%v)", result.SpeakerID, result.Identified)
+	}
+}
+
+func TestEnrollAndIdentify_GMM(t *testing.T) {
+	cfg := DefaultEngineConfig() // FeatureDim is 39 ...
+	cfg.TrainMethod = "gmm"
+	engine := NewEngine(cfg)
+
+	// ... but real extraction produces (NumMFCC+1)*3 = 42 dims per frame.
+	// The GMM must train on the actual dimension, not the configured one.
+	featDim := (cfg.NumMFCC + 1) * 3
+	aliceCenter := make([]float64, featDim)
+	bobCenter := make([]float64, featDim)
+	for i := 0; i < featDim; i++ {
+		if i%2 == 0 {
+			aliceCenter[i] = 1.0
+			bobCenter[i] = -1.0
+		} else {
+			aliceCenter[i] = 0.5
+			bobCenter[i] = 2.0
+		}
+	}
+
+	engine.EnrollSpeakerFromFeatures("alice", "Alice", generateCluster(aliceCenter, 40, 0.1))
+	engine.EnrollSpeakerFromFeatures("bob", "Bob", generateCluster(bobCenter, 40, 0.1))
+
+	result := engine.IdentifyFromFeatures(generateCluster(aliceCenter, 5, 0.05))
+	if len(result.AllMatches) == 0 {
+		t.Fatal("expected at least one candidate")
+	}
+	best := result.AllMatches[0]
+	if best.Score <= 0 {
+		t.Fatalf("GMM model did not learn anything (score=%f)", best.Score)
+	}
+	if !result.Identified {
+		t.Errorf("should have identified alice (score=%f, threshold=%f)", best.Score, cfg.MatchThreshold)
+	}
+	if best.SpeakerID != "alice" {
+		t.Errorf("identified: got %s, want alice", best.SpeakerID)
+	}
+}
+
+func TestSaveDatabase_RemovesStaleFiles(t *testing.T) {
+	dir := t.TempDir()
+	cfg := DefaultEngineConfig()
+
+	engine := NewEngine(cfg)
+	engine.EnrollSpeakerFromFeatures("alice", "Alice", generateCluster([]float64{1, 2, 3}, 10, 0.1))
+	engine.EnrollSpeakerFromFeatures("bob", "Bob", generateCluster([]float64{4, 5, 6}, 10, 0.1))
+	if err := engine.SaveDatabase(dir); err != nil {
+		t.Fatalf("SaveDatabase: %v", err)
+	}
+
+	engine.RemoveSpeaker("bob")
+	if err := engine.SaveDatabase(dir); err != nil {
+		t.Fatalf("SaveDatabase after remove: %v", err)
+	}
+
+	loaded := NewEngine(cfg)
+	if err := loaded.LoadDatabase(dir); err != nil {
+		t.Fatalf("LoadDatabase: %v", err)
+	}
+	list := loaded.ListSpeakers()
+	if len(list) != 1 || list[0].ID != "alice" {
+		t.Errorf("removed speaker resurrected: got %v, want only alice", list)
 	}
 }

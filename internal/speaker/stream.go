@@ -4,10 +4,10 @@ package speaker
 // speakers in chunks. It is NOT safe for concurrent use — the caller must
 // serialize calls to Write and Identify.
 type StreamBuffer struct {
-	engine   *Engine
-	samples  []float64
+	engine     *Engine
+	samples    []float64
 	sampleRate int
-	chunkSec  float64 // seconds per identification chunk
+	chunkSec   float64 // seconds per identification chunk
 }
 
 // NewStreamBuffer creates a streaming buffer that identifies speakers
@@ -22,7 +22,7 @@ func NewStreamBuffer(engine *Engine, sampleRate int, chunkSec float64) *StreamBu
 	return &StreamBuffer{
 		engine:     engine,
 		sampleRate: sampleRate,
-		chunkSec:  chunkSec,
+		chunkSec:   chunkSec,
 	}
 }
 
@@ -56,6 +56,9 @@ func (s *StreamBuffer) Identify() (*MatchResult, bool) {
 	start := len(s.samples) - chunkSamples
 	chunk := s.samples[start:]
 
+	s.engine.mu.RLock()
+	defer s.engine.mu.RUnlock()
+
 	// Extract features
 	features := s.engine.extractFeaturesFromSamples(chunk, s.sampleRate)
 	if len(features) == 0 {
@@ -73,6 +76,9 @@ func (s *StreamBuffer) IdentifyFull() *MatchResult {
 	if len(s.samples) == 0 {
 		return &MatchResult{Identified: false}
 	}
+
+	s.engine.mu.RLock()
+	defer s.engine.mu.RUnlock()
 
 	features := s.engine.extractFeaturesFromSamples(s.samples, s.sampleRate)
 	if len(features) == 0 {

@@ -149,21 +149,3 @@ func TestExtractMFCC(t *testing.T) {
 		t.Fatal("expected non-empty features")
 	}
 }
-
-func flattenToMono(features [][]float64) []float64 {
-	if len(features) == 0 {
-		return nil
-	}
-	dim := len(features[0])
-	result := make([]float64, dim)
-	for _, f := range features {
-		for i := 0; i < dim && i < len(f); i++ {
-			result[i] += f[i]
-		}
-	}
-	n := float64(len(features))
-	for i := range result {
-		result[i] /= n
-	}
-	return result
-}

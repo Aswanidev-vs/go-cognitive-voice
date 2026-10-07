@@ -12,7 +12,7 @@ func generateCluster(center []float64, n int, noise float64) [][]float64 {
 	for i := range features {
 		features[i] = make([]float64, len(center))
 		for j, c := range center {
-			features[i][j] = c + (math.Sin(float64(i*j+1))*noise)
+			features[i][j] = c + (math.Sin(float64(i*j+1)) * noise)
 		}
 	}
 	return features

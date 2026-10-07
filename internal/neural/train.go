@@ -30,8 +30,8 @@ func DefaultTrainConfig() TrainConfig {
 func (n *Network) Train(speakerFeatures map[string][][]float64, cfg TrainConfig) float64 {
 	// Build pairs: (anchor, positive) for same speaker, (anchor, negative) for different
 	type pair struct {
-		a, b   []float64
-		same   bool
+		a, b []float64
+		same bool
 	}
 
 	var pairs []pair
@@ -80,6 +80,10 @@ func (n *Network) Train(speakerFeatures map[string][][]float64, cfg TrainConfig)
 		return 0
 	}
 
+	if cfg.BatchSize <= 0 {
+		cfg.BatchSize = DefaultTrainConfig().BatchSize
+	}
+
 	// Shuffle pairs
 	rand.Shuffle(len(pairs), func(i, j int) {
 		pairs[i], pairs[j] = pairs[j], pairs[i]
@@ -89,44 +93,15 @@ func (n *Network) Train(speakerFeatures map[string][][]float64, cfg TrainConfig)
 
 	for epoch := 0; epoch < cfg.Epochs; epoch++ {
 		totalLoss := 0.0
-		nCorrect := 0
 
 		for start := 0; start < len(pairs); start += cfg.BatchSize {
 			end := start + cfg.BatchSize
 			if end > len(pairs) {
 				end = len(pairs)
 			}
-			batch := pairs[start:end]
-
-			// Forward + backward for each pair in batch
-			for _, p := range batch {
-				embA := n.Forward(p.a)
-				embB := n.Forward(p.b)
-
-				// Cosine distance
-				dist := cosineDistance(embA, embB)
-
-				var loss float64
-				if p.same {
-					// Same speaker: minimize distance
-					loss = dist * dist
-					nCorrect++
-					if dist > 0.3 {
-						nCorrect--
-					}
-				} else {
-					// Different speaker: maximize distance (with margin)
-					loss = math.Max(0, cfg.Margin-dist)
-					if dist > cfg.Margin {
-						nCorrect++
-					} else {
-						nCorrect--
-					}
-				}
-				totalLoss += loss
-
-				// Backpropagate (simplified — update weights directly)
-				n.backwardPair(p.a, p.b, p.same, cfg)
+			// Forward + backward for each pair in the batch
+			for _, p := range pairs[start:end] {
+				totalLoss += n.trainPair(p.a, p.b, p.same, cfg)
 			}
 		}
 
@@ -139,71 +114,76 @@ func (n *Network) Train(speakerFeatures map[string][][]float64, cfg TrainConfig)
 		if epoch > 0 && epoch%30 == 0 {
 			cfg.LR *= 0.5
 		}
-
-		_ = nCorrect // accuracy tracked but not printed here
 	}
 
 	return bestLoss
 }
 
-// backwardPair performs simplified backpropagation for a contrastive pair.
-// This is a gradient-free approximation that nudges weights in the right direction.
-func (n *Network) backwardPair(a, b []float64, same bool, cfg TrainConfig) {
-	embA := n.Forward(a)
-	embB := n.Forward(b)
+// trainPair runs forward and backward passes for one contrastive pair and
+// returns its loss.
+//
+// Same-speaker pairs minimize the squared cosine distance; different-speaker
+// pairs push the embeddings apart until the margin is reached.
+func (n *Network) trainPair(a, b []float64, same bool, cfg TrainConfig) float64 {
+	embA, cacheA := n.forwardCached(a)
+	embB, cacheB := n.forwardCached(b)
 	dist := cosineDistance(embA, embB)
 
-	// Compute gradient signal
-	var gradScale float64
+	var scale, loss float64
 	if same {
-		// Push embeddings closer: gradient proportional to distance
-		gradScale = -cfg.LR * dist
+		loss = dist * dist
+		scale = 2 * dist // d(dist²)/d(dist)
 	} else {
-		// Push embeddings apart: gradient proportional to (margin - dist)
-		gradScale = cfg.LR * math.Max(0, cfg.Margin-dist) / cfg.Margin
-	}
-
-	if gradScale == 0 {
-		return
-	}
-
-	// Apply weight updates using numerical gradient approximation
-	epsilon := 1e-5
-
-	for li := range n.layers {
-		l := &n.layers[li]
-
-		// Update weights via numerical gradient
-		for i := range l.W {
-			for j := range l.W[i] {
-				// Approximate gradient by perturbing weight
-				old := l.W[i][j]
-
-				l.W[i][j] = old + epsilon
-				embAP := n.Forward(a)
-				embBP := n.Forward(b)
-				distP := cosineDistance(embAP, embBP)
-
-				l.W[i][j] = old - epsilon
-				embAM := n.Forward(a)
-				embBM := n.Forward(b)
-				distM := cosineDistance(embAM, embBM)
-
-				l.W[i][j] = old // restore
-
-				grad := (distP - distM) / (2 * epsilon)
-
-				// SGD update with momentum
-				l.mW[i][j] = 0.9*l.mW[i][j] + 0.1*grad*gradScale
-				l.W[i][j] -= cfg.LR * l.mW[i][j]
-			}
+		loss = math.Max(0, cfg.Margin-dist)
+		if loss == 0 {
+			return 0
 		}
-
-		// Update biases
-		for i := range l.B {
-			l.B[i] -= cfg.LR * gradScale * 0.01
-		}
+		scale = -1 // d(margin - dist)/d(dist)
 	}
+
+	gradA, gradB := cosineDistanceGrads(embA, embB)
+	for i := range gradA {
+		gradA[i] *= scale
+		gradB[i] *= scale
+	}
+	n.backprop(cacheA, gradA, cfg.LR)
+	n.backprop(cacheB, gradB, cfg.LR)
+	return loss
+}
+
+// cosineDistanceGrads returns the gradients of the cosine distance
+// (1 - cos(a, b)) with respect to a and b.
+func cosineDistanceGrads(a, b []float64) ([]float64, []float64) {
+	gradA := make([]float64, len(a))
+	gradB := make([]float64, len(b))
+
+	normA := vectorNorm(a)
+	normB := vectorNorm(b)
+	if normA < 1e-10 || normB < 1e-10 {
+		return gradA, gradB
+	}
+
+	var dot float64
+	for i := range a {
+		dot += a[i] * b[i]
+	}
+	c := dot / (normA * normB)
+
+	// d(1-c)/da = -(b̂ - c·â)/|a|, symmetric for b
+	for i := range a {
+		ua, ub := a[i]/normA, b[i]/normB
+		gradA[i] = -(ub - c*ua) / normA
+		gradB[i] = -(ua - c*ub) / normB
+	}
+	return gradA, gradB
+}
+
+func vectorNorm(v []float64) float64 {
+	sum := 0.0
+	for _, x := range v {
+		sum += x * x
+	}
+	return math.Sqrt(sum)
 }
 
 // Predict returns the speaker ID with the highest similarity.

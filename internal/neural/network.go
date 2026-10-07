@@ -17,13 +17,10 @@ type Network struct {
 
 // Layer holds weights and biases for one fully-connected layer.
 type Layer struct {
-	W      [][]float64 // [out][in]
-	B      []float64   // [out]
-	dW     [][]float64 // gradient accumulators
-	dB     []float64
-	act    Activation
-	mW, vW [][]float64 // Adam moments
-	mB, vB []float64
+	W   [][]float64 // [out][in]
+	B   []float64   // [out]
+	mW  [][]float64 // momentum accumulators
+	act Activation
 }
 
 // Activation function type.
@@ -54,19 +51,12 @@ func newLayer(in, out int, act Activation) Layer {
 	l := Layer{
 		W:   make([][]float64, out),
 		B:   make([]float64, out),
-		dW:  make([][]float64, out),
-		dB:  make([]float64, out),
 		mW:  make([][]float64, out),
-		vW:  make([][]float64, out),
-		mB:  make([]float64, out),
-		vB:  make([]float64, out),
 		act: act,
 	}
 	for i := 0; i < out; i++ {
 		l.W[i] = make([]float64, in)
-		l.dW[i] = make([]float64, in)
 		l.mW[i] = make([]float64, in)
-		l.vW[i] = make([]float64, in)
 		for j := 0; j < in; j++ {
 			l.W[i][j] = rand.NormFloat64() * scale
 		}
@@ -74,14 +64,71 @@ func newLayer(in, out int, act Activation) Layer {
 	return l
 }
 
-// Forward runs the network. Returns the embedding (output of last layer).
-// Also caches intermediate activations for backprop.
+// Forward runs the network and returns the embedding (output of last layer).
 func (n *Network) Forward(x []float64) []float64 {
 	a := x
 	for i := range n.layers {
 		a = n.layers[i].forward(a)
 	}
 	return a
+}
+
+// forwardCached runs the network and additionally returns each layer's
+// activations for backpropagation: cache[0] is x, cache[i+1] is the output
+// of layer i.
+func (n *Network) forwardCached(x []float64) ([]float64, [][]float64) {
+	cache := make([][]float64, len(n.layers)+1)
+	cache[0] = x
+	a := x
+	for i := range n.layers {
+		a = n.layers[i].forward(a)
+		cache[i+1] = a
+	}
+	return a, cache
+}
+
+// backprop propagates the gradient of the loss w.r.t. the network output
+// back through the layers, updating weights with SGD + momentum.
+// cache comes from forwardCached.
+func (n *Network) backprop(cache [][]float64, grad []float64, lr float64) {
+	for i := len(n.layers) - 1; i >= 0; i-- {
+		l := &n.layers[i]
+		in, out := cache[i], cache[i+1]
+
+		// Gradient w.r.t. the pre-activation via the activation derivative,
+		// which for ReLU-family and tanh can be derived from the output.
+		pre := make([]float64, len(grad))
+		for o := range grad {
+			var d float64
+			switch l.act {
+			case ActReLU:
+				if out[o] > 0 {
+					d = 1
+				}
+			case ActLeakyReLU:
+				if out[o] >= 0 {
+					d = 1
+				} else {
+					d = 0.01
+				}
+			case ActTanh:
+				d = 1 - out[o]*out[o]
+			}
+			pre[o] = grad[o] * d
+		}
+
+		gradIn := make([]float64, len(in))
+		for o := range l.W {
+			for j := range l.W[o] {
+				w := l.W[o][j]
+				gradIn[j] += w * pre[o]
+				l.mW[o][j] = 0.9*l.mW[o][j] + 0.1*pre[o]*in[j]
+				l.W[o][j] -= lr * l.mW[o][j]
+			}
+			l.B[o] -= lr * pre[o]
+		}
+		grad = gradIn
+	}
 }
 
 // ForwardEmbed normalizes the output to unit length (L2).
@@ -95,6 +142,9 @@ func (l *Layer) forward(x []float64) []float64 {
 	for i := range l.W {
 		sum := l.B[i]
 		for j, w := range l.W[i] {
+			if j >= len(x) {
+				break // tolerate inputs shorter than the configured dim
+			}
 			sum += w * x[j]
 		}
 		out[i] = sum
